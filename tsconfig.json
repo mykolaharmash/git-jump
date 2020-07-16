@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+      "target": "ES2015",
+      "module": "CommonJS",
+      "noImplicitAny": true,
+      "removeComments": true,
+      "outDir": "./dist",
+      "sourceMap": true
+  },
+  "include": [
+      "src/**/*.ts"
+  ]
+}

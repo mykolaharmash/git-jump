@@ -1,0 +1,16 @@
+{
+  "name": "git-jump",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "build:watch": "tsc --watch -t 'ES2015' --moduleResolution 'Node' -m 'commonjs' --outDir './dist' ./src/index.ts",
+    "build": "tsc -t 'ES2015' --moduleResolution 'Node' -m 'commonjs' --outDir './dist' ./src/index.ts",
+    "start": "node ./dist/index.js"
+  },
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "typescript": "^3.9.6"
+  }
+}
