@@ -4,13 +4,14 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "build:watch": "tsc --watch -t 'ES2015' --moduleResolution 'Node' -m 'commonjs' --outDir './dist' ./src/index.ts",
-    "build": "tsc -t 'ES2015' --moduleResolution 'Node' -m 'commonjs' --outDir './dist' ./src/index.ts",
+    "build": "tsc",
+    "build:watch": "tsc --watch",
     "start": "node ./dist/index.js"
   },
   "author": "",
   "license": "ISC",
   "devDependencies": {
+    "@types/node": "^14.0.23",
     "typescript": "^3.9.6"
   }
 }
