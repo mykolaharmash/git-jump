@@ -2,6 +2,7 @@ import {Writable} from 'stream'
 import { execSync } from 'child_process'
 import {readdirSync, fstat, writeFile, readFileSync, appendFileSync} from 'fs'
 import { parseKeys } from './parseKeys'
+import { fuzzyMatch } from './fuzzy'
 
 
 // Sub-commands
@@ -94,102 +95,6 @@ function relativeDateTime(timestamp: number) {
   return `${Math.round(delta / ONE_DAY)} days`
 }
 
-function fuzzyMatch(search: string, target: string): number {
-  const searchChars = search.split('')
-  const matches = {} as any
-  const matchIndexes = searchChars
-    .map(char => {
-      const previousMatch = matches[char] === undefined ? -1 : matches[char]
-      const index = target.indexOf(char, previousMatch + 1)
-
-      matches[char] = index
-
-      return index
-    })
-    .filter(index => index !== -1)
-
-  let score = 0
-  let continuityMultiplier = 1
-
-  for(let i = 0; i < matchIndexes.length; i++) {
-    const charDistance = i === 0 ? 0 : matchIndexes[i] - matchIndexes[i - 1]
-    const orderMultiplier = charDistance < 0 ? 0 : 1
-    const prefixBonus = Math.max(0, (3 - matchIndexes[i]) / 3)
-
-    continuityMultiplier = charDistance === 1 ? continuityMultiplier + 1 : 1
-
-    score += (continuityMultiplier + prefixBonus) * orderMultiplier
-  }
-
-  const maxScore = (search.length * (search.length + 1) / 2) + 2
-
-  return score / maxScore
-
-  // some-branch-name
-  // should match:
-  // - partial match
-  // some
-  // 0 1 2 3 = 3
-  // soem
-  // 0 1 3 2 = 1 + 2 + 1 = 4
-  // somb = 0 1 2 5 = 1 + 1 + 3 = 5
-  // sbn = 0 5 8 = 5 + 3 = 8
-  // bch = 5 9 10 = 4 + 1 = 5
-  // hbr = 10 5 6 = 5 + 1 = 6
-  // brh = 5 6 10 = 1 + 4 = 5
-
-
-  // tolerance to transpositions
-  // some - 0 1 2 3 = 3 / 3 = 1, 1 - 1 = 0
-  // soem - 0 1 3 2 = 1 + 2 + (-1) = 1 + 2 + 1 = 4 / 3 = 1.33, 1 - 1.33 = -0.33
-  // osem - 1 0 3 2 = (-1) + 3 + (-1) = 1 + 3 + 1 = 5 / 3 = 1.66, 1 - 1.66 = -0.66
-  // eoms = 3 1 2 0 = (-2) + 1 + (-2) = 1 = 0.33, 1 - 0.33 = 0.67
-
-  // ma
-  // soma - 2 2
-  // main - 0 0
-
-  // someh - 3 / 5 = 0.6, 1 - 0.6 = 0.4
-  // something - 3 / 9 = 0.33, 1 - 0.33 = 0.67
-  // some-branch-name - 16 / 16 = 1, 1 - 1 = 0
-  // mehb - 2 3 10 5 = 1 + 7 + (-5)^2 = 33 / 16 = 2.06, 1 - 2.06 = abs(-1.06) = 1.06
-  // mehb - 2 3 10 5 = 1^2 + 7^2 + (-5)^2 = 1 + 49 + 25 = 75
-
-
-  // s111t1111e
-  // se = 0 9 - 9
-  // ste = 0^2 + 4^2 + 9^2 = 97
-  // ets = 9 4 0 = -5^2 + -4^2 = 25 + 16 = 41
-
-  // abcdefg
-  // abcdefg - 0 1 2 3 4 5 6 = 1 + 1 + 1 + 1 + 1 + 1 = 6
-  // aceg - 0 2 4 6 = 2 + 2 + 2 = 6
-  // aceg - 0 2 4 6 = 2^2 + 2^2 + 2^2 = 4 + 4 + 4 = 12
-
-  // tesy
-  // e111s - 1 -1 -1 -1 2 = 1 + 3 = 4
-  // er - 1 -1 = 1 + 3 = 4
-  // ty - 0 3 = 3
-
-
-  // branch
-  // anch
-  // me
-  // sbn
-  // som
-  // sman
-  // - flipped characters
-  // smoe
-  // branhc
-  // ! should not match when flipped character are too far from each other
-  // ! bs
-  // - tolerate some amount of missing characters
-  // someh
-  // ! should not mach when there are too much of missing characters
-  // ! something
-
-}
-
 function dim(s: string): string {
   if (s === '') {
     ''
@@ -206,19 +111,18 @@ function highlight(s: string): string {
 
 function viewBranchesList(state: State) {
   let branches = state.branches
+  const scores = branches.reduce((result, branch) => {
+    result[branch.name] = fuzzyMatch(state.searchString, branch.name)
+
+    return result
+  }, {} as any)
   
   if (state.searchString !== '') {
     branches = branches.slice()
       .sort((a, b) => {
-        return fuzzyMatch(state.searchString, b.name) - fuzzyMatch(state.searchString, a.name)
+        return scores[b.name] - scores[a.name]
       })
-      .map(branch => {
-        return {
-          ...branch,
-          score: fuzzyMatch(state.searchString, branch.name)
-        }
-      })
-      .filter(branch => ((branch as any).score > 0.3))
+      .filter(branch => scores[branch.name] >= 0.5)
   }
   
 
@@ -228,7 +132,7 @@ function viewBranchesList(state: State) {
     }
 
     const timeAgo = branch.lastSwitch !== 0 ? relativeDateTime(branch.lastSwitch) : ''
-    let line = `${dim(index.toString())} ${branch.name}, ${(branch as any).score} ${dim(timeAgo)}`.trim()
+    let line = `${dim(index.toString())} ${branch.name}, ${scores[branch.name]} ${dim(timeAgo)}`.trim()
 
     if (index === state.highlightedBranch) {
       line = highlight(line)
@@ -411,7 +315,7 @@ function bare() {
   }
 
   process.stdin.on('data', (data: Buffer) => {
-    log(data.toString('hex'))
+    // log(data.toString('hex'))
 
     parseKeys(data).forEach((key: Buffer) => {
       if (isSpecialKey(key)) {
