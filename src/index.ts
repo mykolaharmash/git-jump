@@ -1,8 +1,7 @@
 import {Writable} from 'stream'
 import { execSync } from 'child_process'
-import {StringDecoder} from 'string_decoder'
-import * as readline from 'readline'
 import {readdirSync, fstat, writeFile, readFileSync, appendFileSync} from 'fs'
+import { parseKeys } from './parseKeys'
 
 
 // Sub-commands
@@ -95,6 +94,102 @@ function relativeDateTime(timestamp: number) {
   return `${Math.round(delta / ONE_DAY)} days`
 }
 
+function fuzzyMatch(search: string, target: string): number {
+  const searchChars = search.split('')
+  const matches = {} as any
+  const matchIndexes = searchChars
+    .map(char => {
+      const previousMatch = matches[char] === undefined ? -1 : matches[char]
+      const index = target.indexOf(char, previousMatch + 1)
+
+      matches[char] = index
+
+      return index
+    })
+    .filter(index => index !== -1)
+
+  let score = 0
+  let continuityMultiplier = 1
+
+  for(let i = 0; i < matchIndexes.length; i++) {
+    const charDistance = i === 0 ? 0 : matchIndexes[i] - matchIndexes[i - 1]
+    const orderMultiplier = charDistance < 0 ? 0 : 1
+    const prefixBonus = Math.max(0, (3 - matchIndexes[i]) / 3)
+
+    continuityMultiplier = charDistance === 1 ? continuityMultiplier + 1 : 1
+
+    score += (continuityMultiplier + prefixBonus) * orderMultiplier
+  }
+
+  const maxScore = (search.length * (search.length + 1) / 2) + 2
+
+  return score / maxScore
+
+  // some-branch-name
+  // should match:
+  // - partial match
+  // some
+  // 0 1 2 3 = 3
+  // soem
+  // 0 1 3 2 = 1 + 2 + 1 = 4
+  // somb = 0 1 2 5 = 1 + 1 + 3 = 5
+  // sbn = 0 5 8 = 5 + 3 = 8
+  // bch = 5 9 10 = 4 + 1 = 5
+  // hbr = 10 5 6 = 5 + 1 = 6
+  // brh = 5 6 10 = 1 + 4 = 5
+
+
+  // tolerance to transpositions
+  // some - 0 1 2 3 = 3 / 3 = 1, 1 - 1 = 0
+  // soem - 0 1 3 2 = 1 + 2 + (-1) = 1 + 2 + 1 = 4 / 3 = 1.33, 1 - 1.33 = -0.33
+  // osem - 1 0 3 2 = (-1) + 3 + (-1) = 1 + 3 + 1 = 5 / 3 = 1.66, 1 - 1.66 = -0.66
+  // eoms = 3 1 2 0 = (-2) + 1 + (-2) = 1 = 0.33, 1 - 0.33 = 0.67
+
+  // ma
+  // soma - 2 2
+  // main - 0 0
+
+  // someh - 3 / 5 = 0.6, 1 - 0.6 = 0.4
+  // something - 3 / 9 = 0.33, 1 - 0.33 = 0.67
+  // some-branch-name - 16 / 16 = 1, 1 - 1 = 0
+  // mehb - 2 3 10 5 = 1 + 7 + (-5)^2 = 33 / 16 = 2.06, 1 - 2.06 = abs(-1.06) = 1.06
+  // mehb - 2 3 10 5 = 1^2 + 7^2 + (-5)^2 = 1 + 49 + 25 = 75
+
+
+  // s111t1111e
+  // se = 0 9 - 9
+  // ste = 0^2 + 4^2 + 9^2 = 97
+  // ets = 9 4 0 = -5^2 + -4^2 = 25 + 16 = 41
+
+  // abcdefg
+  // abcdefg - 0 1 2 3 4 5 6 = 1 + 1 + 1 + 1 + 1 + 1 = 6
+  // aceg - 0 2 4 6 = 2 + 2 + 2 = 6
+  // aceg - 0 2 4 6 = 2^2 + 2^2 + 2^2 = 4 + 4 + 4 = 12
+
+  // tesy
+  // e111s - 1 -1 -1 -1 2 = 1 + 3 = 4
+  // er - 1 -1 = 1 + 3 = 4
+  // ty - 0 3 = 3
+
+
+  // branch
+  // anch
+  // me
+  // sbn
+  // som
+  // sman
+  // - flipped characters
+  // smoe
+  // branhc
+  // ! should not match when flipped character are too far from each other
+  // ! bs
+  // - tolerate some amount of missing characters
+  // someh
+  // ! should not mach when there are too much of missing characters
+  // ! something
+
+}
+
 function dim(s: string): string {
   if (s === '') {
     ''
@@ -107,18 +202,33 @@ function highlight(s: string): string {
   return `\x1b[38;5;4m${s}\x1b[39m`
 }
 
-function render(state: State) {  
-  const SEARCH_PLACEHOLDER = 'Type to search'
-  const search = state.searchString === '' ? dim(SEARCH_PLACEHOLDER) : state.searchString
-  let result: string[] = [search]
+// Views
 
-  result = result.concat(state.branches.reduce((visibleBranches, branch, index) => {
+function viewBranchesList(state: State) {
+  let branches = state.branches
+  
+  if (state.searchString !== '') {
+    branches = branches.slice()
+      .sort((a, b) => {
+        return fuzzyMatch(state.searchString, b.name) - fuzzyMatch(state.searchString, a.name)
+      })
+      .map(branch => {
+        return {
+          ...branch,
+          score: fuzzyMatch(state.searchString, branch.name)
+        }
+      })
+      .filter(branch => ((branch as any).score > 0.3))
+  }
+  
+
+  return branches.reduce((visibleBranches, branch, index) => {
     if (index < state.branchesScrollWindow[0] || index > state.branchesScrollWindow[1]) {
       return visibleBranches
     }
 
     const timeAgo = branch.lastSwitch !== 0 ? relativeDateTime(branch.lastSwitch) : ''
-    let line = `${dim(index.toString())} ${branch.name} ${dim(timeAgo)}`.trim()
+    let line = `${dim(index.toString())} ${branch.name}, ${(branch as any).score} ${dim(timeAgo)}`.trim()
 
     if (index === state.highlightedBranch) {
       line = highlight(line)
@@ -127,7 +237,15 @@ function render(state: State) {
     visibleBranches.push(line)
 
     return visibleBranches
-  }, []))
+  }, [])
+}
+
+function render(state: State) {  
+  const SEARCH_PLACEHOLDER = 'Type to search'
+  const search = state.searchString === '' ? dim(SEARCH_PLACEHOLDER) : state.searchString
+  let result: string[] = [search]
+
+  result = result.concat(viewBranchesList(state))
 
   if (state.branchesScrollWindow[1] < state.branches.length - 1) {
     result.push('Move down to see more branches')
@@ -138,9 +256,19 @@ function render(state: State) {
   process.stdout.write(`\x1b[1G`)
   process.stdout.write(`\x1b[0J`)
 
+  // Render all the lines
   process.stdout.write(result.join('\n'))
-  process.stdout.write(`\x1b[${result.length - 1}A`)
+
+  // Move cursor back to the first line
+  // \x1b[0A will still move one line up, so
+  // do not move in case there is only one line
+  if (result.length > 1) {
+    process.stdout.write(`\x1b[${result.length - 1}A`)
+  }
+
+  // Put cursor at the end of search string
   process.stdout.write(`\x1b[${state.searchStringCursorPosition + 1}G`)
+  
   // console.log(process.stdout.rows)
   // process.stdout.write(`\x1b[1S`)
 }
@@ -171,24 +299,37 @@ function calculateBranchesWindow() {
   )
   const windowBottom = windowTop + WINDOW_SIZE - 1
 
-  // writeFile('./log', Buffer.from(`windowCenter: ${windowCenter}; oldTop: ${state.branchesScrollWindow[0]}; oldBottom: ${state.branchesScrollWindow[1]}; cursor: ${state.highlightedBranch}; top: ${windowTop}; bottom: ${windowBottom}\n`), () => {})
-
   state.branchesScrollWindow = [windowTop, windowBottom]
 }
 
-const UNICODE_C0_RANGE: [Buffer, Buffer] = [Buffer.from('00', 'hex'), Buffer.from('1F', 'hex')]
-const UNICODE_C1_RANGE: [Buffer, Buffer] = [Buffer.from('80', 'hex'), Buffer.from('9F', 'hex')]
+const escapeCode = 0x1b
+const UNICODE_C0_RANGE: [Number, Number] = [0x00, 0x1f]
+const UNICODE_C1_RANGE: [Number, Number] = [0x80, 0x9f]
 
-function isControlCharacter(key: Buffer) {
+function isEscapeCode(data: Buffer): boolean {
+  return data[0] === escapeCode
+}
+
+function isC0C1ControlCode(data: Buffer): boolean {
   // If key buffer has more then one byte it's not a control character
-  if (key.length > 1) {
+  if (data.length > 1) {
     return false
   }
 
-  const inC0Range = key.compare(UNICODE_C0_RANGE[0]) >= 0 && key.compare(UNICODE_C0_RANGE[1]) <= 0
-  const inC1Range = key.compare(UNICODE_C1_RANGE[0]) >= 0 && key.compare(UNICODE_C1_RANGE[1]) <= 0
+  const code = data[0]
+  
+  const inC0Range = code >= UNICODE_C0_RANGE[0] && code <= UNICODE_C0_RANGE[1]
+  const inC1Range = code >= UNICODE_C1_RANGE[0] && code <= UNICODE_C1_RANGE[1]
 
   return inC0Range || inC1Range
+}
+
+function isDeleteKey(data: Buffer) {
+  return data.length === 1 && data[0] === DELETE[0]
+}
+
+function isSpecialKey(key: Buffer): boolean {
+  return isEscapeCode(key) || isC0C1ControlCode(key) || isDeleteKey(key)
 }
 
 function bare() {
@@ -208,224 +349,78 @@ function bare() {
 
   render(state)
 
-  // readline.emitKeypressEvents(process.stdin)
   process.stdin.setRawMode(true)
-  // process.stdin.setEncoding('utf-8')
 
-  // process.stdin.on('keypress', (key) => {
-  //   console.log(Buffer.from(key, 'utf8'))
+  function handleSpecialKey(key: Buffer) {
 
-  //   console.log(`Received: ${key}`);
-  // });
+    // Supported special key codes
+    // 1b5b44 - left
+    // 1b5b43 - right
+    // 1b5b41 - up
+    // 1b5b42 - down
+    // 1b62 - Option+left, word jump
+    // 1b66 - Option+right, word jump
+    // 1b4f48, 01 - Cmd+left, Control+a, Home
+    // 1b4f46, 05 - Cmd+right, Control+e, End
+    // 7f - Delete
+    // 1b5b337e - fn+Delete, Forward Delete
+    // 1b7f - Option+Delete, delete whole word
+    // 17 - Control+w, delete the whole line
+    // 0b - Control+k, delete from cursor to the end of the line
 
-  // process.stdin.setDefaultEncoding('utf16le')
-  // process.stdout.write(Buffer.from('d0', 'hex'))
-
-  // Control Sequence Format
-  // 1b (5b|4f) [number] [; number]+ (Letter or ~)
-
-  // Supported escape codes
-  // 1b5b44 - left
-  // 1b5b43 - right
-  // 1b5b41 - up
-  // 1b5b42 - down
-  // 1b62 - Option+left, word jump
-  // 1b66 - Option+right, word jump
-  // 1b4f48, 01 - Cmd+left, Control+a, Home
-  // 1b4f46, 05 - Cmd+right, Control+e, End
-  // 7f - Delete
-  // 1b5b337e - fn+Delete, Forward Delete
-  // 1b7f - Option+Delete, delete whole word
-  // 17 - Control+w, delete the whole line
-  // 0b - Control+k, delete from cursor to the end of the line
-
-  function parseKeys(data: Buffer) {
-    const keys = []    
-    let context = null
-
-    const createEscapeSequenceContext = () => {
-      let state: string | null = null
-      let buffer: number[] = []
-      let key: Buffer | null = null
-
-      const setKey = () => {
-        key = Buffer.from(buffer)
-        buffer = []
-      }
-
-      return { 
-        end: () => {
-          return buffer.length === 0 ? null : Buffer.from(buffer)
-        },
-        
-        push: (char: number) => {
-          buffer.push(char)
-
-          switch (state) {
-            case null: {
-              state = 'escape-symbol'
-
-              break
-            }
-
-            case 'escape-symbol': {
-              if (char === 0x5b || char == 0x4f || char === 0x4e) {
-                // It's one of the valid escape symbols, so 
-                // can proceed to parsing parameters
-                state = 'parameters'
-              } else {
-                // parsing a key like "1b7f"
-                setKey()
-              }
-
-              break
-            }
-
-            case 'parameters': {
-              // If it's any letter or ~, close the context
-              if (
-                (char >= 0x41 && char <= 0x5a) 
-                || (char >= 0x61 && char <= 0x7a) 
-                || char === 0x7e
-              ) {
-                setKey()
-              }
-
-              break
-            }
-
-            default: {
-              throw new Error('Unknown state')
-            }
-          } 
-        },
-
-        getKey: () => key
-      } 
-    }
-  
-
-    const createStringContext = () => {
-      const decoder = new StringDecoder('utf-8')
-      let key: Buffer | null = null
-
-      return { 
-        end: () => {
-          const rest = decoder.end()
-
-          return rest === '' ? null : rest
-        },
-
-        push: (char: number) => { 
-          const result = decoder.write(Buffer.from([char]))
-
-          if (result !== '') {
-            key = Buffer.from(result, 'utf-8')
-          }
-        },
-
-        getKey: () => key
-      }
+    if (key.equals(CTRL_C)) {
+      process.stdout.write('\n')
+      process.exit()
     }
 
-    for (let char of data) {
-      if (context === null) {
-        if (char === 0x1b) {
-          context = createEscapeSequenceContext()
-        } else {
-          context = createStringContext()
-        }
-      }
-      
-      context.push(char)
-      const key = context.getKey()
+    if (key.equals(UP)) {
+      state.highlightedBranch = Math.max(0, state.highlightedBranch - 1)
+      calculateBranchesWindow()
+      render(state)
 
-      // If context could parse a key, save the key 
-      // and reset the context so that next character 
-      // is treated out of context and new context 
-      // can be created
-      if (key !== null) {
-        keys.push(key)
-        context = null
-      }
-      
+      return
     }
 
-    // We processed all characters but there might be a case
-    // that context could parse only some of them into actual
-    // key
-    const unparsedChars = context === null ? null : context.end()
+    if (key.equals(DOWN)) {
+      state.highlightedBranch = Math.min(state.branches.length - 1, state.highlightedBranch + 1)
+      calculateBranchesWindow()
+      render(state)
 
-    if (unparsedChars !== null) {
-      keys.push(unparsedChars)
+      return
     }
 
-    return keys
+    if (key.equals(DELETE)) {
+      if (state.searchString.length === 0) {
+        return
+      }
+
+      state.searchString = state.searchString.slice(0, state.searchString.length - 1)  
+      state.searchStringCursorPosition -= 1
+      render(state)
+
+      return
+    }
+  }
+
+  function handleStringKey(key: Buffer) {
+    const inputString = key.toString()
+
+    state.searchString += inputString
+    state.searchStringCursorPosition += inputString.length
+    render(state)
   }
 
   process.stdin.on('data', (data: Buffer) => {
     log(data.toString('hex'))
 
     parseKeys(data).forEach((key: Buffer) => {
-      // const key = Buffer.from(k.sequence, 'utf8')
-
-      // log(key.toString('hex'))
-
-      // render(state)
-      
-      // return
-
-      // for (let i = 0; i <= 1000000000; i++) {}
-      
-      
-
-      if (key.equals(CTRL_C)) {
-        process.stdout.write('\n')
-        process.exit()
-      }
-      
-      if (isControlCharacter(key)) {
-        log('control character')
+      if (isSpecialKey(key)) {
+        handleSpecialKey(key)
 
         return
       }
 
-      if (key.equals(UP)) {
-        state.highlightedBranch = Math.max(0, state.highlightedBranch - 1)
-        calculateBranchesWindow()
-        render(state)
-
-        return
-      }
-
-      if (key.equals(DOWN)) {
-        state.highlightedBranch = Math.min(state.branches.length - 1, state.highlightedBranch + 1)
-        calculateBranchesWindow()
-        render(state)
-
-        return
-      }
-
-      if (key.equals(DELETE)) {
-        if (state.searchString.length === 0) {
-          return
-        }
-
-        state.searchString = state.searchString.slice(0, state.searchString.length - 1)  
-        state.searchStringCursorPosition -= 1
-        render(state)
-
-        return
-      }
-
-      // state.searchString += `\u200C`
-      // log(state.searchString.length)
-      state.searchString += key.toString()
-      // log('modifying search string')
-      // log(key.toString().length)  
-      state.searchStringCursorPosition += 1
-      // log(`search length: ${state.searchString.length}, cursor: ${state.searchStringCursorPosition}`)
-      render(state)
+      handleStringKey(key)
     })
     
   })
