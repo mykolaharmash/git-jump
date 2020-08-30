@@ -48,7 +48,8 @@ function create(args: string[]) {
 
 interface BranchData {
   name: string
-  lastSwitch: number
+  lastSwitch: number,
+  score: number
 }
 
 interface State {
@@ -107,32 +108,27 @@ function highlight(s: string): string {
   return `\x1b[38;5;4m${s}\x1b[39m`
 }
 
+function sortedBranches(branches: BranchData[]): BranchData[] {
+  if (state.searchString === '') {
+    return branches.slice().sort((a, b) => b.lastSwitch - a.lastSwitch)
+  }
+  
+  return branches.slice().sort((a, b) => b.score - a.score)
+}
+
 // Views
 
 function viewBranchesList(state: State) {
-  let branches = state.branches
-  const scores = branches.reduce((result, branch) => {
-    result[branch.name] = fuzzyMatch(state.searchString, branch.name)
-
-    return result
-  }, {} as any)
-  
-  if (state.searchString !== '') {
-    branches = branches.slice()
-      .sort((a, b) => {
-        return scores[b.name] - scores[a.name]
-      })
-      .filter(branch => scores[branch.name] >= 0.5)
-  }
-  
-
+  const branches = sortedBranches(state.branches)
+    .filter(branch => branch.score >= 0.5)
+ 
   return branches.reduce((visibleBranches, branch, index) => {
     if (index < state.branchesScrollWindow[0] || index > state.branchesScrollWindow[1]) {
       return visibleBranches
     }
 
     const timeAgo = branch.lastSwitch !== 0 ? relativeDateTime(branch.lastSwitch) : ''
-    let line = `${dim(index.toString())} ${branch.name}, ${scores[branch.name]} ${dim(timeAgo)}`.trim()
+    let line = `${dim(index.toString())} ${branch.name} ${dim(timeAgo)}`.trim()
 
     if (index === state.highlightedBranch) {
       line = highlight(line)
@@ -236,18 +232,34 @@ function isSpecialKey(key: Buffer): boolean {
   return isEscapeCode(key) || isC0C1ControlCode(key) || isDeleteKey(key)
 }
 
+function calculateBranchesMatchScores(searchString: string, branches: BranchData[]): BranchData[] {
+  return state.branches.map(branch => {
+    return {
+      ...branch,
+      score: searchString === '' ? 1 : fuzzyMatch(searchString, branch.name)
+    }    
+  })
+}
+
+function readCurrentBranch() {
+  const ref = readFileSync('./git/HEAD')
+
+  
+}
+
 function bare() {
   const gitBranches = readdirSync('./.git/refs/heads')
+  
   const branchesData = readBranchesData()
 
   state.branches = gitBranches
     .map(branch => {
       return {
         name: branch,
-        lastSwitch: branchesData[branch] !== undefined ? branchesData[branch].lastSwitch : 0
+        lastSwitch: branchesData[branch] !== undefined ? branchesData[branch].lastSwitch : 0,
+        score: 1
       }
     })
-    .sort((a, b) => b.lastSwitch - a.lastSwitch)
 
   // log(state.branches)
 
@@ -300,6 +312,7 @@ function bare() {
 
       state.searchString = state.searchString.slice(0, state.searchString.length - 1)  
       state.searchStringCursorPosition -= 1
+      state.branches = calculateBranchesMatchScores(state.searchString, state.branches)
       render(state)
 
       return
@@ -311,6 +324,7 @@ function bare() {
 
     state.searchString += inputString
     state.searchStringCursorPosition += inputString.length
+    state.branches = calculateBranchesMatchScores(state.searchString, state.branches)
     render(state)
   }
 
