@@ -186,7 +186,6 @@ function viewBranch(
   branch: BranchData, 
   index: number, 
   layout: LayoutColumn[], 
-  maxWidth: number, 
   verboseLastUsed: boolean
 ): string {
   return layout.reduce((line: string, column: LayoutColumn) => {
@@ -195,9 +194,13 @@ function viewBranch(
     }
 
     if (column.type === LayoutColumnType.BranchName) {
-      const ellipsis = branch.name.length > maxWidth ? '…' : ''
+      let truncatedName = branch.name.slice(0, column.width)
+
+      if (truncatedName.length < branch.name.length) {
+        truncatedName = `${truncatedName.substring(0, truncatedName.length - 1)}…`
+      }
       
-      return line + (branch.name.slice(0, maxWidth - 1) + ellipsis).padEnd(column.width, ' ')
+      return line + truncatedName.padEnd(column.width, ' ')
     }
 
     if (column.type === LayoutColumnType.LastUsed) {
@@ -205,10 +208,8 @@ function viewBranch(
         return line + ''.padEnd(column.width, ' ')
       }
 
-      const relativeTime = relativeDateTime(branch.lastSwitch)
-      const singleDigitShiftSpace = parseInt(relativeTime) < 10 ? ' ' : ''
-      const frontSpacing = '    '
-      const lastUsed = verboseLastUsed ? `${singleDigitShiftSpace}last used ` : `${singleDigitShiftSpace}          `
+      const frontSpacing = '   '
+      const lastUsed = verboseLastUsed ? `last used ` : `          `
       const ago = verboseLastUsed ? ' ago' : '    '
       const label = `${frontSpacing}${lastUsed}${relativeDateTime(branch.lastSwitch)}${ago}`
 
@@ -225,23 +226,25 @@ function viewList(state: State): string[] {
   }
 
   const indexColumnWidth = 3
-  const lastUsedColumnWidth = 30
-  const branchNameColumnWidth = Math.max.apply(null, state.branches.map((branch: BranchData) => {
-    return branch.name.length
-  }))
-  const moreIndicatorColumnWidth = 10
+  const lastUsedColumnWidth = 27
+  const moreIndicatorColumnWidth = 5
+  const branchNameColumnWidth = Math.min(
+    state.columns - indexColumnWidth - moreIndicatorColumnWidth,
+    Math.max.apply(null, state.branches.map((branch: BranchData) => {
+      return branch.name.length
+    }))
+  ) 
+  const fullLayoutMinWidth = indexColumnWidth + branchNameColumnWidth + lastUsedColumnWidth + moreIndicatorColumnWidth
 
   const layout: LayoutColumn[] = [
     { type: LayoutColumnType.Index, width: indexColumnWidth },
-    { type: LayoutColumnType.BranchName, width: branchNameColumnWidth }
+    { type: LayoutColumnType.BranchName, width: branchNameColumnWidth },
+    { type: LayoutColumnType.MoreIndicator, width: moreIndicatorColumnWidth }
   ]
 
-  if (state.columns >= branchNameColumnWidth + indexColumnWidth + lastUsedColumnWidth) {
-    layout.push({ type: LayoutColumnType.LastUsed, width: lastUsedColumnWidth })
-  }
-
-  if (state.columns >= branchNameColumnWidth + indexColumnWidth + lastUsedColumnWidth + moreIndicatorColumnWidth) {
-    layout.push({ type: LayoutColumnType.MoreIndicator, width: moreIndicatorColumnWidth })
+  
+  if (state.columns >= fullLayoutMinWidth) {
+    layout.splice(2, 0, { type: LayoutColumnType.LastUsed, width: lastUsedColumnWidth })
   }
 
   const firstTrackedBranch = state.list.findIndex((line) => {
@@ -264,7 +267,6 @@ function viewList(state: State): string[] {
           line.content as BranchData, 
           index - (state.list[0].type === ListLineType.Head ? 1 : 0), 
           layout, 
-          state.columns,
           firstTrackedBranch === index
         )
       }
@@ -276,14 +278,14 @@ function viewList(state: State): string[] {
     })
     .slice(listWindow.topIndex, listWindow.bottomIndex + 1)
 
-  const hasMoreIndicator = (
-    layout[layout.length - 1].type === LayoutColumnType.MoreIndicator 
-    && listWindow.bottomIndex < state.list.length - 1
-  )
-  if (hasMoreIndicator) {
-    const paddedLength = state.columns - indexColumnWidth - branchNameColumnWidth - lastUsedColumnWidth
+  if (listWindow.bottomIndex < state.list.length - 1) {
+    let paddedLength = state.columns - indexColumnWidth - branchNameColumnWidth
 
-    visibleList[visibleList.length - 1] += dim('   ↓ more '.padStart(paddedLength, ' '))
+    if (layout[2].type === LayoutColumnType.LastUsed) {
+      paddedLength -= lastUsedColumnWidth
+    }
+
+    visibleList[visibleList.length - 1] += dim('   ↓ '.padStart(paddedLength, ' '))
   }
 
   return visibleList
