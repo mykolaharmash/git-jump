@@ -178,7 +178,7 @@ function viewBranch(branch: BranchData, index: number): string {
 
 function viewList(state: State): string[] {
   if (state.list.length === 0) {
-    return []
+    return [`${branchIndexPadding}${dim('No such branches')}`]
   }
 
   let list: string[] = []
@@ -289,7 +289,7 @@ function readCurrentHEAD(): CurrentHEAD {
 
   return {
     detached,
-    sha: detached ? head : null,
+    sha: detached ? head.slice(0, 7).trim() : null,
     branchName: detached ? null : head.slice(16).trim()
   }
 }
