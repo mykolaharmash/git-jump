@@ -48,27 +48,51 @@ function create(args: string[]) {
 
 interface BranchData {
   name: string
-  lastSwitch: number,
+  lastSwitch: number
   score: number
 }
 
+interface CurrentHEAD {
+  detached: boolean
+  sha: string | null
+  branchName: string | null
+}
+
+enum ListLineType {
+  Head,
+  Branch
+}
+
+interface ListLine {
+  type: ListLineType,
+  content: CurrentHEAD | BranchData,
+  searchMatchScore: number
+}
+
 interface State {
-  highlightedBranch: number
-  branchesScrollWindow: [number, number]
+  rows: number
+  highlightedLineIndex: number
   maxRows: number
   branches: BranchData[]
   searchString: string
   searchStringCursorPosition: number
+  currentHEAD: CurrentHEAD,
+  list: ListLine[]
 }
 
-const WINDOW_SIZE = process.stdout.rows - 3
 const state: State = {
-  highlightedBranch: 0,
-  branchesScrollWindow: [0, WINDOW_SIZE - 1],
+  rows: process.stdout.rows,
+  highlightedLineIndex: 0,
   maxRows: process.stdout.rows,
   branches: [],
   searchString: '',
-  searchStringCursorPosition: 0
+  searchStringCursorPosition: 0,
+  currentHEAD: {
+    detached: false,
+    sha: null,
+    branchName: null
+  },
+  list: []
 }
 
 function relativeDateTime(timestamp: number) {
@@ -116,28 +140,56 @@ function sortedBranches(branches: BranchData[]): BranchData[] {
   return branches.slice().sort((a, b) => b.score - a.score)
 }
 
+interface LinesWindow {
+  topIndex: number
+  bottomIndex: number
+}
+
+function calculateLinesWindow(linesCount: number, highlightedLineIndex: number): LinesWindow {
+  const windowSize = state.rows - 2
+  const windowHalf = Math.floor(windowSize / 2)
+
+  const topIndex = Math.max(
+    0, 
+    Math.min(
+      linesCount - windowSize, 
+      state.highlightedLineIndex - windowHalf
+    )
+  )
+  const bottomIndex = topIndex + (windowSize - 1)
+
+  return { topIndex, bottomIndex }
+}
+
 // Views
 
-function viewBranchesList(state: State) {
+function viewCurrentHEAD(state: State): string {
+  if (!state.currentHEAD.detached) {
+    return `   ${state.currentHEAD.branchName}`
+  }
+}
+
+function viewBranchesList(state: State): string[] {
   const branches = sortedBranches(state.branches)
     .filter(branch => branch.score >= 0.5)
- 
-  return branches.reduce((visibleBranches, branch, index) => {
-    if (index < state.branchesScrollWindow[0] || index > state.branchesScrollWindow[1]) {
-      return visibleBranches
-    }
+    .filter(branch => (
+      state.currentHEAD.detached
+      || branch.name !== state.currentHEAD.branchName
+    ))
+    .map((branch, index) => {
+      const timeAgo = branch.lastSwitch !== 0 ? relativeDateTime(branch.lastSwitch) : ''
 
-    const timeAgo = branch.lastSwitch !== 0 ? relativeDateTime(branch.lastSwitch) : ''
-    let line = `${dim(index.toString())} ${branch.name} ${dim(timeAgo)}`.trim()
+      return ` ${dim(index.toString())} ${branch.name} ${dim(timeAgo)}`
+    })
 
-    if (index === state.highlightedBranch) {
-      line = highlight(line)
-    }
+  const currentHEAD = viewCurrentHEAD(state)
 
-    visibleBranches.push(line)
+  const lines = [currentHEAD, ...branches]
+  const linesWindow = calculateLinesWindow(lines.length, state.highlightedLineIndex)
 
-    return visibleBranches
-  }, [])
+  return lines.map((line, index) => {
+    return index === state.highlightedLineIndex ? highlight(line) : line
+  }).slice(linesWindow.topIndex, linesWindow.bottomIndex + 1)
 }
 
 function render(state: State) {  
@@ -146,10 +198,6 @@ function render(state: State) {
   let result: string[] = [search]
 
   result = result.concat(viewBranchesList(state))
-
-  if (state.branchesScrollWindow[1] < state.branches.length - 1) {
-    result.push('Move down to see more branches')
-  }
 
   // TODO: merge all writes into a single write
   // Move to the beginning of the line and clear everything after cursor
@@ -186,20 +234,6 @@ function log(s: any) {
 
 function readBranchesData() {
   return JSON.parse(readFileSync(`${process.cwd()}/.jump/data.json`).toString())
-}
-
-function calculateBranchesWindow() {
-  const windowCenter = Math.floor((state.branchesScrollWindow[0] + state.branchesScrollWindow[1]) / 2)
-  const windowTop = Math.max(
-    0, 
-    Math.min(
-      state.branches.length - 1 - (WINDOW_SIZE - 1), 
-      state.branchesScrollWindow[0] - (windowCenter - state.highlightedBranch)
-    )
-  )
-  const windowBottom = windowTop + WINDOW_SIZE - 1
-
-  state.branchesScrollWindow = [windowTop, windowBottom]
 }
 
 const escapeCode = 0x1b
@@ -241,17 +275,23 @@ function calculateBranchesMatchScores(searchString: string, branches: BranchData
   })
 }
 
-function readCurrentBranch() {
-  const ref = readFileSync('./git/HEAD')
+function readCurrentHEAD(): CurrentHEAD {
+  const head = readFileSync('./.git/HEAD').toString()
+  const detached = !head.startsWith('ref:')
 
-  
+  return {
+    detached,
+    sha: detached ? head : null,
+    branchName: detached ? null : head.slice(16).trim()
+  }
 }
 
 function bare() {
-  const gitBranches = readdirSync('./.git/refs/heads')
-  
+  const gitBranches = readdirSync('./.git/refs/heads')  
   const branchesData = readBranchesData()
 
+  state.currentHEAD = readCurrentHEAD()
+  // log(state.currentHEAD)
   state.branches = gitBranches
     .map(branch => {
       return {
@@ -260,6 +300,14 @@ function bare() {
         score: 1
       }
     })
+  state.list = [
+    { type: ListLineType.Head, content: state.currentHEAD, searchMatchScore: 1 }, 
+    ...state.branches.map((content: BranchData) => ({ 
+      type: ListLineType.Branch, 
+      content,
+      searchMatchScore: 1
+    }))
+  ]
 
   // log(state.branches)
 
@@ -290,16 +338,16 @@ function bare() {
     }
 
     if (key.equals(UP)) {
-      state.highlightedBranch = Math.max(0, state.highlightedBranch - 1)
-      calculateBranchesWindow()
+      state.highlightedLineIndex = Math.max(0, state.highlightedLineIndex - 1)
+      // calculateBranchesWindow()
       render(state)
 
       return
     }
 
     if (key.equals(DOWN)) {
-      state.highlightedBranch = Math.min(state.branches.length - 1, state.highlightedBranch + 1)
-      calculateBranchesWindow()
+      state.highlightedLineIndex = Math.min(state.branches.length - 1, state.highlightedLineIndex + 1)
+      // calculateBranchesWindow()
       render(state)
 
       return
