@@ -70,6 +70,7 @@ interface ListLine {
 
 interface State {
   rows: number
+  columns: number
   highlightedLineIndex: number
   maxRows: number
   branches: BranchData[]
@@ -81,6 +82,7 @@ interface State {
 
 const state: State = {
   rows: process.stdout.rows,
+  columns: process.stdout.columns,
   highlightedLineIndex: 0,
   maxRows: process.stdout.rows,
   branches: [],
@@ -156,11 +158,22 @@ function calculateLinesWindow(linesCount: number, highlightedLineIndex: number):
   return { topIndex, bottomIndex }
 }
 
+enum LayoutColumnType {
+  Index,
+  BranchName,
+  LastUsed,
+  MoreIndicator
+}
+
+interface LayoutColumn {
+  type: LayoutColumnType
+  start: number
+  width: number
+}
+
 // Views
 
 const branchIndexPadding = '   '
-
-
 
 function viewCurrentHEAD(currentHEAD: CurrentHEAD): string {
   if (!currentHEAD.detached) {
@@ -170,13 +183,38 @@ function viewCurrentHEAD(currentHEAD: CurrentHEAD): string {
   return `${branchIndexPadding}${bold(currentHEAD.sha)} ${dim('(detached)')}`
 }
 
-function viewBranch(branch: BranchData, index: number): string {
-  const timeAgo = branch.lastSwitch !== 0 ? relativeDateTime(branch.lastSwitch) : ''
+function viewBranch(branch: BranchData, index: number, layout: LayoutColumn[], maxWidth: number): string {
+  return layout.reduce((line: string, column: LayoutColumn) => {
+    if (column.type === LayoutColumnType.Index) {
+      return line + ` ${dim(index.toString())} `
+    }
 
-  return ` ${dim(index.toString())} ${branch.name} ${dim(timeAgo)}`
+    if (column.type === LayoutColumnType.BranchName) {
+      const ellipsis = branch.name.length > maxWidth ? '…' : ''
+      
+      return line + (branch.name.slice(0, maxWidth - 1) + ellipsis).padEnd(column.width, ' ')
+    }
+
+    if (column.type === LayoutColumnType.LastUsed) {
+      if (branch.lastSwitch === 0) {
+        return line
+      }
+
+      const relativeTime = relativeDateTime(branch.lastSwitch)
+      const singleDigitShiftSpace = parseInt(relativeTime) < 10 ? ' ' : ''
+      const frontSpacing = '    '
+      const lastUsed = index === 0 ? `${singleDigitShiftSpace}last used ` : `${singleDigitShiftSpace}          `
+      const ago = index === 0 ? ' ago' : '    '
+      const label = `${frontSpacing}${lastUsed}${relativeDateTime(branch.lastSwitch)}${ago}`
+
+      return line + dim(label)
+    }
+
+    return line
+  }, '')  
 }
 
-function viewList(state: State): string[] {
+function viewList(state: State): string[] {  
   if (state.list.length === 0) {
     return [`${branchIndexPadding}${dim('No such branches')}`]
   }
@@ -192,8 +230,28 @@ function viewList(state: State): string[] {
     nonCurrentBranches = state.list
   }
 
+  const indexColumnWidth = 3
+  const lastUsedColumnWidth = 30
+  const branchNameColumnWidth = Math.max.apply(null, nonCurrentBranches.map((line: ListLine) => {
+    return (line.content as BranchData).name.length
+  }))
+  const moreIndicatorColumnWidth = 10
+
+  const branchLineLayout: LayoutColumn[] = [
+    { type: LayoutColumnType.Index, start: 0, width: indexColumnWidth },
+    { type: LayoutColumnType.BranchName, start: indexColumnWidth, width: branchNameColumnWidth }
+  ]
+
+  if (state.columns >= branchNameColumnWidth + indexColumnWidth + lastUsedColumnWidth) {
+    branchLineLayout.push({ type: LayoutColumnType.LastUsed, start: branchNameColumnWidth + indexColumnWidth, width: lastUsedColumnWidth })
+  }
+
+  if (state.columns >= branchNameColumnWidth + indexColumnWidth + lastUsedColumnWidth + moreIndicatorColumnWidth) {
+    branchLineLayout.push({ type: LayoutColumnType.MoreIndicator, start: branchNameColumnWidth + indexColumnWidth + lastUsedColumnWidth, width: lastUsedColumnWidth })
+  }
+
   list = list.concat(nonCurrentBranches.map((line: ListLine, index: number) => {
-    return viewBranch(line.content as BranchData, index)
+    return viewBranch(line.content as BranchData, index, branchLineLayout, state.columns)
   }))
 
   const listWindow = calculateLinesWindow(list.length, state.highlightedLineIndex)

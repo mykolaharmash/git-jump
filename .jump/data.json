@@ -6,5 +6,9 @@
   "some": {
     "name": "some",
     "lastSwitch": 1596788552236
+  },
+  "test-branch": {
+    "name": "test-branch",
+    "lastSwitch": 1598883834688
   }
 }
