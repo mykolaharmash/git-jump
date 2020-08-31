@@ -185,8 +185,7 @@ function viewCurrentHEAD(currentHEAD: CurrentHEAD): string {
 function viewBranch(
   branch: BranchData, 
   index: number, 
-  layout: LayoutColumn[], 
-  verboseLastUsed: boolean
+  layout: LayoutColumn[]
 ): string {
   return layout.reduce((line: string, column: LayoutColumn) => {
     if (column.type === LayoutColumnType.Index) {
@@ -201,19 +200,6 @@ function viewBranch(
       }
       
       return line + truncatedName.padEnd(column.width, ' ')
-    }
-
-    if (column.type === LayoutColumnType.LastUsed) {
-      if (branch.lastSwitch === 0) {
-        return line + ''.padEnd(column.width, ' ')
-      }
-
-      const frontSpacing = '   '
-      const lastUsed = verboseLastUsed ? `last used ` : `          `
-      const ago = verboseLastUsed ? ' ago' : '    '
-      const label = `${frontSpacing}${lastUsed}${relativeDateTime(branch.lastSwitch)}${ago}`
-
-      return line + dim(label.padEnd(column.width, ' '))
     }
 
     return line
@@ -233,26 +219,13 @@ function viewList(state: State): string[] {
     Math.max.apply(null, state.branches.map((branch: BranchData) => {
       return branch.name.length
     }))
-  ) 
-  const fullLayoutMinWidth = indexColumnWidth + branchNameColumnWidth + lastUsedColumnWidth + moreIndicatorColumnWidth
+  )
 
   const layout: LayoutColumn[] = [
     { type: LayoutColumnType.Index, width: indexColumnWidth },
     { type: LayoutColumnType.BranchName, width: branchNameColumnWidth },
     { type: LayoutColumnType.MoreIndicator, width: moreIndicatorColumnWidth }
   ]
-
-  
-  if (state.columns >= fullLayoutMinWidth) {
-    layout.splice(2, 0, { type: LayoutColumnType.LastUsed, width: lastUsedColumnWidth })
-  }
-
-  const firstTrackedBranch = state.list.findIndex((line) => {
-    return (
-      line.type === ListLineType.Branch 
-      && (line.content as BranchData).lastSwitch !== 0
-    )
-  })
 
   const listWindow = calculateLinesWindow(state.list.length, state.highlightedLineIndex)
 
@@ -266,8 +239,7 @@ function viewList(state: State): string[] {
         return viewBranch(
           line.content as BranchData, 
           index - (state.list[0].type === ListLineType.Head ? 1 : 0), 
-          layout, 
-          firstTrackedBranch === index
+          layout
         )
       }
     }
