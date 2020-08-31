@@ -160,6 +160,8 @@ function calculateLinesWindow(linesCount: number, highlightedLineIndex: number):
 
 const branchIndexPadding = '   '
 
+
+
 function viewCurrentHEAD(currentHEAD: CurrentHEAD): string {
   if (!currentHEAD.detached) {
     return `${branchIndexPadding}${bold(currentHEAD.branchName)}`
