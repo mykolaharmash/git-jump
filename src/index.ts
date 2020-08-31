@@ -49,7 +49,6 @@ function create(args: string[]) {
 interface BranchData {
   name: string
   lastSwitch: number
-  score: number
 }
 
 interface CurrentHEAD {
@@ -128,16 +127,12 @@ function dim(s: string): string {
   return `\x1b[2m${s}\x1b[22m`
 }
 
-function highlight(s: string): string {
-  return `\x1b[38;5;4m${s}\x1b[39m`
+function bold(s: string): string {
+  return `\x1b[1m${s}\x1b[22m`
 }
 
-function sortedBranches(branches: BranchData[]): BranchData[] {
-  if (state.searchString === '') {
-    return branches.slice().sort((a, b) => b.lastSwitch - a.lastSwitch)
-  }
-  
-  return branches.slice().sort((a, b) => b.score - a.score)
+function highlight(s: string): string {
+  return `\x1b[38;5;4m${s}\x1b[39m`
 }
 
 interface LinesWindow {
@@ -163,62 +158,82 @@ function calculateLinesWindow(linesCount: number, highlightedLineIndex: number):
 
 // Views
 
-function viewCurrentHEAD(state: State): string {
-  if (!state.currentHEAD.detached) {
-    return `   ${state.currentHEAD.branchName}`
+const branchIndexPadding = '   '
+
+function viewCurrentHEAD(currentHEAD: CurrentHEAD): string {
+  if (!currentHEAD.detached) {
+    return `${branchIndexPadding}${bold(currentHEAD.branchName)}`
   }
+
+  return `${branchIndexPadding}${bold(currentHEAD.sha)} ${dim('(detached)')}`
 }
 
-function viewBranchesList(state: State): string[] {
-  const branches = sortedBranches(state.branches)
-    .filter(branch => branch.score >= 0.5)
-    .filter(branch => (
-      state.currentHEAD.detached
-      || branch.name !== state.currentHEAD.branchName
-    ))
-    .map((branch, index) => {
-      const timeAgo = branch.lastSwitch !== 0 ? relativeDateTime(branch.lastSwitch) : ''
+function viewBranch(branch: BranchData, index: number): string {
+  const timeAgo = branch.lastSwitch !== 0 ? relativeDateTime(branch.lastSwitch) : ''
 
-      return ` ${dim(index.toString())} ${branch.name} ${dim(timeAgo)}`
-    })
+  return ` ${dim(index.toString())} ${branch.name} ${dim(timeAgo)}`
+}
 
-  const currentHEAD = viewCurrentHEAD(state)
+function viewList(state: State): string[] {
+  if (state.list.length === 0) {
+    return []
+  }
 
-  const lines = [currentHEAD, ...branches]
-  const linesWindow = calculateLinesWindow(lines.length, state.highlightedLineIndex)
+  let list: string[] = []
+  let nonCurrentBranches: ListLine[]
 
-  return lines.map((line, index) => {
+  if (state.list[0].type === ListLineType.Head) {
+    list.push(viewCurrentHEAD(state.list[0].content as CurrentHEAD))
+
+    nonCurrentBranches = state.list.slice(1)
+  } else {
+    nonCurrentBranches = state.list
+  }
+
+  list = list.concat(nonCurrentBranches.map((line: ListLine, index: number) => {
+    return viewBranch(line.content as BranchData, index)
+  }))
+
+  const listWindow = calculateLinesWindow(list.length, state.highlightedLineIndex)
+
+  return list.map((line, index) => {
     return index === state.highlightedLineIndex ? highlight(line) : line
-  }).slice(linesWindow.topIndex, linesWindow.bottomIndex + 1)
+  }).slice(listWindow.topIndex, listWindow.bottomIndex + 1)
 }
 
-function render(state: State) {  
-  const SEARCH_PLACEHOLDER = 'Type to search'
+function viewSearch(state: State): string {
+  const SEARCH_PLACEHOLDER = 'Search'
   const search = state.searchString === '' ? dim(SEARCH_PLACEHOLDER) : state.searchString
-  let result: string[] = [search]
 
-  result = result.concat(viewBranchesList(state))
+  return `${branchIndexPadding}${search}`
+}
 
-  // TODO: merge all writes into a single write
+function view(state: State) {
+  let lines: string[] = []
+
+  lines.push(viewSearch(state))
+  lines = lines.concat(viewList(state))
+
+  render(lines, branchIndexPadding.length + state.searchStringCursorPosition + 1)
+}
+
+function render(lines: string[], cursorPosition: number) {  
   // Move to the beginning of the line and clear everything after cursor
   process.stdout.write(`\x1b[1G`)
   process.stdout.write(`\x1b[0J`)
 
   // Render all the lines
-  process.stdout.write(result.join('\n'))
+  process.stdout.write(lines.join('\n'))
 
   // Move cursor back to the first line
   // \x1b[0A will still move one line up, so
   // do not move in case there is only one line
-  if (result.length > 1) {
-    process.stdout.write(`\x1b[${result.length - 1}A`)
+  if (lines.length > 1) {
+    process.stdout.write(`\x1b[${lines.length - 1}A`)
   }
 
-  // Put cursor at the end of search string
-  process.stdout.write(`\x1b[${state.searchStringCursorPosition + 1}G`)
-  
-  // console.log(process.stdout.rows)
-  // process.stdout.write(`\x1b[1S`)
+  // Move cursor back where user left it
+  process.stdout.write(`\x1b[${cursorPosition}G`)
 }
 
 const CTRL_C = Buffer.from('03', 'hex')
@@ -266,15 +281,6 @@ function isSpecialKey(key: Buffer): boolean {
   return isEscapeCode(key) || isC0C1ControlCode(key) || isDeleteKey(key)
 }
 
-function calculateBranchesMatchScores(searchString: string, branches: BranchData[]): BranchData[] {
-  return state.branches.map(branch => {
-    return {
-      ...branch,
-      score: searchString === '' ? 1 : fuzzyMatch(searchString, branch.name)
-    }    
-  })
-}
-
 function readCurrentHEAD(): CurrentHEAD {
   const head = readFileSync('./.git/HEAD').toString()
   const detached = !head.startsWith('ref:')
@@ -284,6 +290,64 @@ function readCurrentHEAD(): CurrentHEAD {
     sha: detached ? head : null,
     branchName: detached ? null : head.slice(16).trim()
   }
+}
+
+enum ListSortCriterion {
+  LastSwitch,
+  SearchMatchScore
+}
+
+function sortedListLines(list: ListLine[], criterion: ListSortCriterion): ListLine[] {
+  if (criterion === ListSortCriterion.LastSwitch) {
+    return list.slice().sort((a: ListLine, b: ListLine) => {
+      if (a.type === ListLineType.Head) {
+        return 0
+      }
+
+      return (b.content as BranchData).lastSwitch - (a.content as BranchData).lastSwitch
+    })
+  }
+
+  return list.slice().sort((a: ListLine, b: ListLine) => {
+    return b.searchMatchScore - a.searchMatchScore
+  })
+}
+
+function generateList(state: State) {
+  let list: ListLine[] = []
+
+  list.push({ 
+    type: ListLineType.Head, 
+    content: state.currentHEAD, 
+    searchMatchScore: state.searchString === '' ? 1 : fuzzyMatch(state.searchString, state.currentHEAD.detached ? state.currentHEAD.sha : state.currentHEAD.branchName)
+  })
+
+  const branchLines: ListLine[] = state.branches
+    // Filter out current branch if HEAD is not detached,
+    // because current branch will be displayed as the first list
+    .filter(branch => {
+      return (
+        state.currentHEAD.detached
+        || branch.name !== state.currentHEAD.branchName
+      )
+    })
+    .map((branch: BranchData) => {
+      return { 
+        type: ListLineType.Branch, 
+        content: branch,
+        searchMatchScore: state.searchString === '' ? 1 : fuzzyMatch(state.searchString, branch.name)
+      }
+    })
+
+  list = list.concat(branchLines).filter((line: ListLine) => {
+    return line.searchMatchScore >= 0.5
+  })
+
+  // log(list)
+
+  const sortCriterion = state.searchString === '' ? ListSortCriterion.LastSwitch : ListSortCriterion.SearchMatchScore
+
+  return sortedListLines(list, sortCriterion)
 }
 
 function bare() {
@@ -300,18 +364,14 @@ function bare() {
         score: 1
       }
     })
-  state.list = [
-    { type: ListLineType.Head, content: state.currentHEAD, searchMatchScore: 1 }, 
-    ...state.branches.map((content: BranchData) => ({ 
-      type: ListLineType.Branch, 
-      content,
-      searchMatchScore: 1
-    }))
-  ]
 
-  // log(state.branches)
+  
+  state.list = generateList(state)
+  state.highlightedLineIndex = 0
 
-  render(state)
+  // log(state.list)
+
+  view(state)
 
   process.stdin.setRawMode(true)
 
@@ -340,15 +400,15 @@ function bare() {
     if (key.equals(UP)) {
       state.highlightedLineIndex = Math.max(0, state.highlightedLineIndex - 1)
       // calculateBranchesWindow()
-      render(state)
+      view(state)
 
       return
     }
 
     if (key.equals(DOWN)) {
-      state.highlightedLineIndex = Math.min(state.branches.length - 1, state.highlightedLineIndex + 1)
+      state.highlightedLineIndex = Math.min(state.list.length - 1, state.highlightedLineIndex + 1)
       // calculateBranchesWindow()
-      render(state)
+      view(state)
 
       return
     }
@@ -360,8 +420,9 @@ function bare() {
 
       state.searchString = state.searchString.slice(0, state.searchString.length - 1)  
       state.searchStringCursorPosition -= 1
-      state.branches = calculateBranchesMatchScores(state.searchString, state.branches)
-      render(state)
+      state.list = generateList(state)
+      state.highlightedLineIndex = 0
+      view(state)
 
       return
     }
@@ -372,8 +433,9 @@ function bare() {
 
     state.searchString += inputString
     state.searchStringCursorPosition += inputString.length
-    state.branches = calculateBranchesMatchScores(state.searchString, state.branches)
-    render(state)
+    state.list = generateList(state)
+    state.highlightedLineIndex = 0
+    view(state)
   }
 
   process.stdin.on('data', (data: Buffer) => {
