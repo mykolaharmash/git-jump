@@ -69,6 +69,11 @@ interface ListLine {
   searchMatchScore: number
 }
 
+enum Scene {
+  List,
+  SelectionLogs
+}
+
 interface State {
   rows: number
   columns: number
@@ -78,7 +83,9 @@ interface State {
   searchString: string
   searchStringCursorPosition: number
   currentHEAD: CurrentHEAD,
-  list: ListLine[]
+  list: ListLine[],
+  lineSelected: boolean,
+  scene: Scene
 }
 
 const state: State = {
@@ -94,7 +101,9 @@ const state: State = {
     sha: null,
     branchName: null
   },
-  list: []
+  list: [],
+  lineSelected: false,
+  scene: Scene.List
 }
 
 function dim(s: string): string {
@@ -111,6 +120,10 @@ function bold(s: string): string {
 
 function highlight(s: string): string {
   return `\x1b[38;5;4m${s}\x1b[39m`
+}
+
+function green(s: string): string {
+  return `\x1b[38;5;2m${s}\x1b[39m`
 }
 
 function red(s: string): string {
@@ -168,9 +181,9 @@ function calculateLayout(state: State): LayoutColumn[] {
   ]
 }
 
-function highlightLine(line: string, lineIndex: number, highlightedLineIndex: number) {
+function highlightLine(line: string, lineIndex: number, highlightedLineIndex: number, selected: true) {
   if (lineIndex === highlightedLineIndex) {
-    return highlight(line)
+    return selected ? green(line) : highlight(line)
   }
 
   return line
@@ -246,7 +259,7 @@ function viewList(state: State): string[] {
   })
     .map((line, index) => {
       return addScrollIndicator(
-        highlightLine(line, index, state.highlightedLineIndex),
+        highlightLine(line, index, state.highlightedLineIndex, state.lineSelected),
         index,
         state.list.length,
         listWindow,
@@ -264,48 +277,74 @@ function viewSearch(state: State): string {
 }
 
 function view(state: State) {
-  let lines: string[] = []
+  switch (state.scene) {
+    case Scene.List: {
+      let lines: string[] = []
 
-  lines.push(viewSearch(state))
-  lines = lines.concat(viewList(state))
+      lines.push(viewSearch(state))
+      lines = lines.concat(viewList(state))
 
-  render(lines, branchIndexPadding.length + state.searchStringCursorPosition + 1)
+      clear()
+      render(lines)
+      cursorTo(branchIndexPadding.length + state.searchStringCursorPosition + 1, 1)
+
+      break
+    }
+
+    case Scene.SelectionLogs: {
+      clear()
+      render(['Helloooo!'])
+    }
+  }
 }
 
-/**
- * This function assumes that the cursor currently in the
- * search field to filter branches, which is the first line
- * of the UI. That is why it only moves cursor horizontally
- * before clearing the screen.
- * 
- * Move to the beginning of the line and clear everything after cursor.
- */
+interface RenderState {
+  cursorY: number
+}
+
+const renderState: RenderState = {
+  cursorY: 1
+}
+
 function clear() {
-  process.stdout.write(`\x1b[1G\x1b[0J`)
+  cursorTo(1, 1)
+
+  // Clear everything after the cursor
+  process.stdout.write(`\x1b[0J`)
 }
 
-function render(lines: string[], cursorPosition: number) {  
-  clear()
-
-  // Render all the lines
+function render(lines: string[]) {  
   process.stdout.write(lines.join('\n'))
+
+  // Keep track of the cursor's vertical position
+  // in order to know how many lines to move up 
+  // to clean the screen later
+  renderState.cursorY = lines.length
+}
+
+function cursorTo(x: number, y: number) {
+  const yDelta = renderState.cursorY - y
 
   // Move cursor back to the first line
   // \x1b[0A will still move one line up, so
   // do not move in case there is only one line
-  if (lines.length > 1) {
-    process.stdout.write(`\x1b[${lines.length - 1}A`)
+  if (yDelta > 0) {
+    process.stdout.write(`\x1b[${yDelta}A`)
   }
+  
+  // There is an escape sequence for moving
+  // cursor horizontally using absolute coordinate,
+  // so no need to use delta here, like for Y
+  process.stdout.write(`\x1b[${x}G`)
 
-  // Move cursor back where user left it
-  process.stdout.write(`\x1b[${cursorPosition}G`)
+  renderState.cursorY = y
 }
 
 const CTRL_C = Buffer.from('03', 'hex')
 const UP = Buffer.from('1b5b41', 'hex')
 const DOWN = Buffer.from('1b5b42', 'hex')
 const DELETE = Buffer.from('7f', 'hex')
-const LETTER_g = Buffer.from('g', 'utf8')
+const ENTER = Buffer.from('0d', 'hex')
 const SPACE = Buffer.from('20', 'hex')
 
 function log(s: any) {
@@ -508,6 +547,7 @@ function bare() {
     // 1b4f48, 01 - Cmd+left, Control+a, Home
     // 1b4f46, 05 - Cmd+right, Control+e, End
     // 7f - Delete
+    // 0d - Enter
     // 1b5b337e - fn+Delete, Forward Delete
     // 1b7f - Option+Delete, delete whole word
     // 17 - Control+w, delete the whole line
@@ -517,6 +557,16 @@ function bare() {
       clear()
       process.stdout.write('\n')
       process.exit()
+    }
+
+    if (key.equals(ENTER)) {
+      // state.lineSelected = true
+      // view(state)
+
+      state.scene = Scene.SelectionLogs
+      view(state)
+
+      return
     }
 
     if (key.equals(UP)) {
@@ -549,6 +599,8 @@ function bare() {
   }
 
   function handleStringKey(key: Buffer) {
+    throw new Error('Boom!')
+
     const inputString = key.toString()
 
     state.searchString += inputString
@@ -615,22 +667,21 @@ function multilineTextLayout(text: string, columns: number): string[] {
 function handleError(error: Error): void {
   const spacing = '  '
 
-  const lines = [
-    '\n',
-    `${spacing}${red('Error:')} ${error.message}\n`,
-    '\n',
-    `${spacing}${bold('What to do?')}\n`,
+  clear()
+  render([
+    '',
+    `${spacing}${red('Error:')} ${error.message}`,
+    '',
+    `${spacing}${bold('What to do?')}`,
     ...multilineTextLayout(
       'Help improve git-jump, create GitHub issue with this error and steps to reproduce it. Thank you!', 
       process.stdout.columns - spacing.length
-    ).map(line => `${spacing}${line}\n`),
-    '\n',
-    `${spacing}GitHub Issues: https://github.com/mykolaharmash/git-jump/issues\n`,
-    '\n'
-  ]
-
-  clear()
-  lines.forEach(line => process.stdout.write(line))
+    ).map(line => `${spacing}${line}`),
+    '',
+    `${spacing}GitHub Issues: https://github.com/mykolaharmash/git-jump/issues`,
+    '',
+    ''
+  ])
 
   // console.log(error)
 
