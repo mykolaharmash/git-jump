@@ -170,6 +170,40 @@ interface LayoutColumn {
   width: number
 }
 
+function calculateLayout(state: State): LayoutColumn[] {
+  const indexColumnWidth = 3
+  const moreIndicatorColumnWidth = 5
+  const branchNameColumnWidth = Math.min(
+    state.columns - indexColumnWidth - moreIndicatorColumnWidth,
+    Math.max.apply(null, state.branches.map((branch: BranchData) => {
+      return branch.name.length
+    }))
+  )
+  const moreIndicatorSpacingWidth = state.columns - indexColumnWidth - branchNameColumnWidth - moreIndicatorColumnWidth
+
+  return [
+    { type: LayoutColumnType.Index, width: indexColumnWidth },
+    { type: LayoutColumnType.BranchName, width: branchNameColumnWidth },
+    { type: LayoutColumnType.MoreIndicator, width: moreIndicatorSpacingWidth + moreIndicatorColumnWidth }
+  ]
+}
+
+function highlightLine(line: string, lineIndex: number, highlightedLineIndex: number) {
+  if (lineIndex === highlightedLineIndex) {
+    return highlight(line)
+  }
+
+  return line
+}
+
+function addScrollIndicator(line: string, lineIndex: number, listLength: number, listWindow: LinesWindow, layout: LayoutColumn[]): string {
+  if (lineIndex === listWindow.bottomIndex && listWindow.bottomIndex < listLength - 1) {
+    return line + dim('   ↓ '.padStart(layout[layout.length - 1].width, ' '))
+  }
+
+  return line
+}
+
 // Views
 
 const branchIndexPadding = '   '
@@ -210,26 +244,11 @@ function viewList(state: State): string[] {
   if (state.list.length === 0) {
     return [`${branchIndexPadding}${dim('No such branches')}`]
   }
-
-  const indexColumnWidth = 3
-  const lastUsedColumnWidth = 27
-  const moreIndicatorColumnWidth = 5
-  const branchNameColumnWidth = Math.min(
-    state.columns - indexColumnWidth - moreIndicatorColumnWidth,
-    Math.max.apply(null, state.branches.map((branch: BranchData) => {
-      return branch.name.length
-    }))
-  )
-
-  const layout: LayoutColumn[] = [
-    { type: LayoutColumnType.Index, width: indexColumnWidth },
-    { type: LayoutColumnType.BranchName, width: branchNameColumnWidth },
-    { type: LayoutColumnType.MoreIndicator, width: moreIndicatorColumnWidth }
-  ]
-
+  
+  const layout = calculateLayout(state)
   const listWindow = calculateLinesWindow(state.list.length, state.highlightedLineIndex)
 
-  const visibleList = state.list.map((line: ListLine, index: number) => {
+  return state.list.map((line: ListLine, index: number) => {
     switch (line.type) {
       case ListLineType.Head: {
         return viewCurrentHEAD(line.content as CurrentHEAD)
@@ -246,21 +265,15 @@ function viewList(state: State): string[] {
     
   })
     .map((line, index) => {
-      return index === state.highlightedLineIndex ? highlight(line) : line
+      return addScrollIndicator(
+        highlightLine(line, index, state.highlightedLineIndex),
+        index,
+        state.list.length,
+        listWindow,
+        layout
+      )
     })
     .slice(listWindow.topIndex, listWindow.bottomIndex + 1)
-
-  if (listWindow.bottomIndex < state.list.length - 1) {
-    let paddedLength = state.columns - indexColumnWidth - branchNameColumnWidth
-
-    if (layout[2].type === LayoutColumnType.LastUsed) {
-      paddedLength -= lastUsedColumnWidth
-    }
-
-    visibleList[visibleList.length - 1] += dim('   ↓ '.padStart(paddedLength, ' '))
-  }
-
-  return visibleList
 }
 
 function viewSearch(state: State): string {
@@ -401,11 +414,8 @@ function generateList(state: State) {
       }
     })
 
-  list = list.concat(branchLines).filter((line: ListLine) => {
-    return line.searchMatchScore >= 0.5
-  })
-
-  // log(list)
+  list = list.concat(branchLines)
+    .filter((line: ListLine) => line.searchMatchScore > 0)
 
   const sortCriterion = state.searchString === '' ? ListSortCriterion.LastSwitch : ListSortCriterion.SearchMatchScore
 
