@@ -599,8 +599,6 @@ function bare() {
   }
 
   function handleStringKey(key: Buffer) {
-    throw new Error('Boom!')
-
     const inputString = key.toString()
 
     state.searchString += inputString
