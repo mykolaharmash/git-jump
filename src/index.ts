@@ -1,6 +1,6 @@
 import {Writable} from 'stream'
 import { execSync } from 'child_process'
-import {readdirSync, fstat, writeFile, readFileSync, appendFileSync, opendirSync} from 'fs'
+import {readdirSync, fstat, writeFile, readFileSync, appendFileSync, opendirSync, Dirent} from 'fs'
 import * as fsPath from 'path'
 import { parseKeys } from './parseKeys'
 import { fuzzyMatch } from './fuzzy'
@@ -95,31 +95,6 @@ const state: State = {
     branchName: null
   },
   list: []
-}
-
-function relativeDateTime(timestamp: number) {
-  // const date = new Date(timestamp)
-  const ONE_MINUTE = 60
-  const ONE_HOUR = ONE_MINUTE * 60
-  const ONE_DAY = ONE_HOUR * 24
-
-  const now = Date.now()
-  const delta = Math.round((now - timestamp) / 1000)
-
-  // TODO: handle singular and plural forms
-  if (delta < ONE_MINUTE) {
-    return `${delta} seconds`
-  }
-
-  if (delta < ONE_HOUR) {
-    return `${Math.round(delta / ONE_MINUTE)} minutes`
-  }
-
-  if (delta < ONE_DAY) {
-    return `${Math.round(delta / ONE_HOUR)} hours`
-  }
-
-  return `${Math.round(delta / ONE_DAY)} days`
 }
 
 function dim(s: string): string {
@@ -357,17 +332,6 @@ function isSpecialKey(key: Buffer): boolean {
   return isEscapeCode(key) || isC0C1ControlCode(key) || isDeleteKey(key)
 }
 
-function readCurrentHEAD(): CurrentHEAD {
-  const head = readFileSync('./.git/HEAD').toString()
-  const detached = !head.startsWith('ref:')
-
-  return {
-    detached,
-    sha: detached ? head.slice(0, 7).trim() : null,
-    branchName: detached ? null : head.slice(16).trim()
-  }
-}
-
 enum ListSortCriterion {
   LastSwitch,
   SearchMatchScore
@@ -434,6 +398,8 @@ function locateGitRepoFolder(folder: string): string {
     item = dir.readSync()
   }
 
+  dir.closeSync()
+
   if (found) {
     return folder
   }
@@ -446,7 +412,24 @@ function locateGitRepoFolder(folder: string): string {
 }
 
 function readRawGitBranches(gitRepoFolder: string): string[] {
-  return readdirSync(fsPath.join(gitRepoFolder, '.git/refs/heads'))
+  function collectBranchNames(folderPath: string, prefix: string = ''): string[] {
+    return readdirSync(folderPath, { withFileTypes: true })
+      .reduce((branches: string[], item: Dirent) => {
+        if (item.isFile()) {
+          branches.push(prefix + item.name)
+        }    
+
+        if (item.isDirectory()) {
+          branches = branches.concat(
+            collectBranchNames(fsPath.join(folderPath, item.name), `${prefix}${item.name}/`)
+          )
+        }
+
+        return branches
+      }, [])
+  }
+
+  return collectBranchNames(fsPath.join(gitRepoFolder, '.git/refs/heads'))
 }
 
 type BranchDataCollection =  {[key: string]: BranchData}
@@ -476,10 +459,22 @@ function readBranchesData(gitRepoFolder: string): BranchData[] {
     })
 }
 
+
+function readCurrentHEAD(gitRepoFolder: string): CurrentHEAD {
+  const head = readFileSync(fsPath.join(gitRepoFolder, '.git/HEAD')).toString()
+  const detached = !head.startsWith('ref:')
+
+  return {
+    detached,
+    sha: detached ? head.slice(0, 7).trim() : null,
+    branchName: detached ? null : head.slice(16).trim()
+  }
+}
+
 function bare() {
   const gitRepoFolder = locateGitRepoFolder(process.cwd())
 
-  state.currentHEAD = readCurrentHEAD()
+  state.currentHEAD = readCurrentHEAD(gitRepoFolder)
   state.branches = readBranchesData(gitRepoFolder)
   
   state.list = generateList(state)
@@ -627,6 +622,8 @@ function handleError(error: Error): void {
   process.stdout.write(`\x1b[1G\x1b[0J`)
 
   lines.forEach(line => process.stdout.write(line))
+
+  console.log(error)
 
   process.exit(1)
 }
