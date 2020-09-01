@@ -203,7 +203,7 @@ function viewBranch(
 ): string {
   return layout.reduce((line: string, column: LayoutColumn) => {
     if (column.type === LayoutColumnType.Index) {
-      return line + ` ${dim(index.toString())} `
+      return line + (index < 10 ? ` ${dim(index.toString())} ` : '   ')
     }
 
     if (column.type === LayoutColumnType.BranchName) {
@@ -272,10 +272,20 @@ function view(state: State) {
   render(lines, branchIndexPadding.length + state.searchStringCursorPosition + 1)
 }
 
+/**
+ * This function assumes that the cursor currently in the
+ * search field to filter branches, which is the first line
+ * of the UI. That is why it only moves cursor horizontally
+ * before clearing the screen.
+ * 
+ * Move to the beginning of the line and clear everything after cursor.
+ */
+function clear() {
+  process.stdout.write(`\x1b[1G\x1b[0J`)
+}
+
 function render(lines: string[], cursorPosition: number) {  
-  // Move to the beginning of the line and clear everything after cursor
-  process.stdout.write(`\x1b[1G`)
-  process.stdout.write(`\x1b[0J`)
+  clear()
 
   // Render all the lines
   process.stdout.write(lines.join('\n'))
@@ -504,6 +514,7 @@ function bare() {
     // 0b - Control+k, delete from cursor to the end of the line
 
     if (key.equals(CTRL_C)) {
+      clear()
       process.stdout.write('\n')
       process.exit()
     }
@@ -618,12 +629,10 @@ function handleError(error: Error): void {
     '\n'
   ]
 
-  // Move to the beginning of the line and clear everything after cursor
-  process.stdout.write(`\x1b[1G\x1b[0J`)
-
+  clear()
   lines.forEach(line => process.stdout.write(line))
 
-  console.log(error)
+  // console.log(error)
 
   process.exit(1)
 }
