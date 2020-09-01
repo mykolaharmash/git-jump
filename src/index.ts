@@ -1,6 +1,7 @@
 import {Writable} from 'stream'
 import { execSync } from 'child_process'
-import {readdirSync, fstat, writeFile, readFileSync, appendFileSync} from 'fs'
+import {readdirSync, fstat, writeFile, readFileSync, appendFileSync, opendirSync} from 'fs'
+import * as fsPath from 'path'
 import { parseKeys } from './parseKeys'
 import { fuzzyMatch } from './fuzzy'
 
@@ -135,6 +136,10 @@ function bold(s: string): string {
 
 function highlight(s: string): string {
   return `\x1b[38;5;4m${s}\x1b[39m`
+}
+
+function red(s: string): string {
+  return `\x1b[38;5;1m${s}\x1b[39m`
 }
 
 interface LinesWindow {
@@ -322,10 +327,6 @@ function log(s: any) {
   appendFileSync('./log', Buffer.from(`${JSON.stringify(s)}\n`))
 }
 
-function readBranchesData() {
-  return JSON.parse(readFileSync(`${process.cwd()}/.jump/data.json`).toString())
-}
-
 const escapeCode = 0x1b
 const UNICODE_C0_RANGE: [Number, Number] = [0x00, 0x1f]
 const UNICODE_C1_RANGE: [Number, Number] = [0x80, 0x9f]
@@ -422,21 +423,64 @@ function generateList(state: State) {
   return sortedListLines(list, sortCriterion)
 }
 
-function bare() {
-  const gitBranches = readdirSync('./.git/refs/heads')  
-  const branchesData = readBranchesData()
+function locateGitRepoFolder(folder: string): string {
+  const dir = opendirSync(folder)
 
-  state.currentHEAD = readCurrentHEAD()
-  // log(state.currentHEAD)
-  state.branches = gitBranches
+  let item = dir.readSync()
+  let found = false
+
+  while(item !== null && !found) {
+    found = item.isDirectory() && item.name === '.git'
+    item = dir.readSync()
+  }
+
+  if (found) {
+    return folder
+  }
+
+  if (folder === '/') {
+    throw new Error('There is no Git repository in current or any parent folder.')
+  }
+
+  return locateGitRepoFolder(fsPath.resolve(folder, '..'))
+}
+
+function readRawGitBranches(gitRepoFolder: string): string[] {
+  return readdirSync(fsPath.join(gitRepoFolder, '.git/refs/heads'))
+}
+
+type BranchDataCollection =  {[key: string]: BranchData}
+
+function readBranchesJumpData(gitRepoFolder: string): BranchDataCollection {
+  const dataFilePath = '.jump/data.json'
+  
+  try {
+    return JSON.parse(readFileSync(fsPath.join(gitRepoFolder, dataFilePath)).toString())
+  } catch (e) {
+    throw new Error(`JSON in "${dataFilePath}" is not valid, could not parse it.`)
+  }  
+}
+
+function readBranchesData(gitRepoFolder: string): BranchData[] {
+  const rawGitBranches = readRawGitBranches(gitRepoFolder)
+  const branchesJumpData = readBranchesJumpData(gitRepoFolder)
+
+  return rawGitBranches
     .map(branch => {
+      const jumpData = branchesJumpData[branch]
+
       return {
         name: branch,
-        lastSwitch: branchesData[branch] !== undefined ? branchesData[branch].lastSwitch : 0,
-        score: 1
+        lastSwitch: jumpData !== undefined ? jumpData.lastSwitch : 0
       }
     })
+}
 
+function bare() {
+  const gitRepoFolder = locateGitRepoFolder(process.cwd())
+
+  state.currentHEAD = readCurrentHEAD()
+  state.branches = readBranchesData(gitRepoFolder)
   
   state.list = generateList(state)
   state.highlightedLineIndex = 0
@@ -471,7 +515,6 @@ function bare() {
 
     if (key.equals(UP)) {
       state.highlightedLineIndex = Math.max(0, state.highlightedLineIndex - 1)
-      // calculateBranchesWindow()
       view(state)
 
       return
@@ -479,7 +522,6 @@ function bare() {
 
     if (key.equals(DOWN)) {
       state.highlightedLineIndex = Math.min(state.list.length - 1, state.highlightedLineIndex + 1)
-      // calculateBranchesWindow()
       view(state)
 
       return
@@ -544,7 +586,59 @@ function jumpTo(args: string[]) {
 
 }
 
+function multilineTextLayout(text: string, columns: number): string[] {
+  if (text.length === 0) {
+    return []
+  }
+
+  const words = text.split(' ')  
+
+  return words.slice(1).reduce((lines, word) => {
+    const currentLine = lines[lines.length - 1]
+
+    if (currentLine.length + word.length <= columns) {
+      lines[lines.length - 1] = currentLine + ' ' + word
+    } else {
+      lines.push(word)
+    }
+
+    return lines
+  }, [words[0]])
+}
+
+function handleError(error: Error): void {
+  const spacing = '  '
+
+  const lines = [
+    '\n',
+    `${spacing}${red('Error:')} ${error.message}\n`,
+    '\n',
+    `${spacing}${bold('What to do?')}\n`,
+    ...multilineTextLayout(
+      'Help improve git-jump, create GitHub issue with this error and steps to reproduce it. Thank you!', 
+      process.stdout.columns - spacing.length
+    ).map(line => `${spacing}${line}\n`),
+    '\n',
+    `${spacing}GitHub Issues: https://github.com/mykolaharmash/git-jump/issues\n`,
+    '\n'
+  ]
+
+  // Move to the beginning of the line and clear everything after cursor
+  process.stdout.write(`\x1b[1G\x1b[0J`)
+
+  lines.forEach(line => process.stdout.write(line))
+
+  process.exit(1)
+}
+
 function main(args: string[]) {
+
+  process.on('uncaughtException', handleError)
+
+  // process.on('exit', (code) => {
+    // If there are updates available, suggest user to update
+  // })
+
   if (args.length === 0) {
     bare()
 
