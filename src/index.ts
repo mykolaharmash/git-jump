@@ -82,11 +82,12 @@ interface State {
   branches: BranchData[]
   searchString: string
   searchStringCursorPosition: number
-  currentHEAD: CurrentHEAD,
-  list: ListLine[],
-  lineSelected: boolean,
-  scene: Scene,
+  currentHEAD: CurrentHEAD
+  list: ListLine[]
+  lineSelected: boolean
+  scene: Scene
   message: string[]
+  gitRepoFolder: string | null
 }
 
 const state: State = {
@@ -105,7 +106,8 @@ const state: State = {
   list: [],
   lineSelected: false,
   scene: Scene.List,
-  message: []
+  message: [],
+  gitRepoFolder: null
 }
 
 function dim(s: string): string {
@@ -319,6 +321,12 @@ function view(state: State) {
   }
 }
 
+/**
+ * These properties cannot live in the main
+ * app state as they are affected by rendering itself,
+ * not by application logic. They are part of a different,
+ * more low-level sub-system.
+ */
 interface RenderState {
   cursorY: number
 }
@@ -604,110 +612,109 @@ function switchBranch(branchName: string): { status: number, message: string[] }
   return { status, message }
 }
 
-function bare() {
-  const gitRepoFolder = locateGitRepoFolder(process.cwd())
+function handleSpecialKey(key: Buffer) {
 
-  state.currentHEAD = readCurrentHEAD(gitRepoFolder)
-  state.branches = readBranchesData(gitRepoFolder)
-  
+  // Supported special key codes
+  // 1b5b44 - left
+  // 1b5b43 - right
+  // 1b5b41 - up
+  // 1b5b42 - down
+  // 1b62 - Option+left, word jump
+  // 1b66 - Option+right, word jump
+  // 1b4f48, 01 - Cmd+left, Control+a, Home
+  // 1b4f46, 05 - Cmd+right, Control+e, End
+  // 7f - Delete
+  // 0d - Enter
+  // 1b5b337e - fn+Delete, Forward Delete
+  // 1b7f - Option+Delete, delete whole word
+  // 17 - Control+w, delete the whole line
+  // 0b - Control+k, delete from cursor to the end of the line
+
+  if (key.equals(CTRL_C)) {
+    clear()
+    process.stdout.write('\n')
+    process.exit()
+  }
+
+  if (key.equals(ENTER)) {
+    const line = state.list[state.highlightedLineIndex]
+    const branchName = getBranchNameForLine(line)      
+
+    if (line.type === ListLineType.Head) {
+      state.scene = Scene.Message  
+      state.message = [`Staying on ${bold(branchName)}`]
+      view(state)
+
+      process.exit(0)
+    }
+
+    const { status, message } = switchBranch(branchName)
+
+    if (status === 0) {
+      saveBranchesJumpData(
+        state.gitRepoFolder, 
+        updateBranchLastSwitch(branchName, Date.now(), state)
+      )
+    }
+
+    state.scene = Scene.Message
+    state.message = message
+
+    view(state)
+
+    process.exit(status)
+  }
+
+  if (key.equals(UP)) {
+    state.highlightedLineIndex = Math.max(0, state.highlightedLineIndex - 1)
+    view(state)
+
+    return
+  }
+
+  if (key.equals(DOWN)) {
+    state.highlightedLineIndex = Math.min(state.list.length - 1, state.highlightedLineIndex + 1)
+    view(state)
+
+    return
+  }
+
+  if (key.equals(DELETE)) {
+    if (state.searchString.length === 0) {
+      return
+    }
+
+    state.searchString = state.searchString.slice(0, state.searchString.length - 1)  
+    state.searchStringCursorPosition -= 1
+    state.list = generateList(state)
+    state.highlightedLineIndex = 0
+    view(state)
+
+    return
+  }
+}
+
+function handleStringKey(key: Buffer) {
+  const inputString = key.toString()
+
+  state.searchString += inputString
+  state.searchStringCursorPosition += inputString.length
+  state.list = generateList(state)
+  state.highlightedLineIndex = 0
+
+  view(state)
+}
+
+function bare() {
+  state.gitRepoFolder = locateGitRepoFolder(process.cwd())
+  state.currentHEAD = readCurrentHEAD(state.gitRepoFolder)
+  state.branches = readBranchesData(state.gitRepoFolder)
   state.list = generateList(state)
   state.highlightedLineIndex = 0
 
   view(state)
 
   process.stdin.setRawMode(true)
-
-  function handleSpecialKey(key: Buffer) {
-
-    // Supported special key codes
-    // 1b5b44 - left
-    // 1b5b43 - right
-    // 1b5b41 - up
-    // 1b5b42 - down
-    // 1b62 - Option+left, word jump
-    // 1b66 - Option+right, word jump
-    // 1b4f48, 01 - Cmd+left, Control+a, Home
-    // 1b4f46, 05 - Cmd+right, Control+e, End
-    // 7f - Delete
-    // 0d - Enter
-    // 1b5b337e - fn+Delete, Forward Delete
-    // 1b7f - Option+Delete, delete whole word
-    // 17 - Control+w, delete the whole line
-    // 0b - Control+k, delete from cursor to the end of the line
-
-    if (key.equals(CTRL_C)) {
-      clear()
-      process.stdout.write('\n')
-      process.exit()
-    }
-
-    if (key.equals(ENTER)) {
-      const line = state.list[state.highlightedLineIndex]
-      const branchName = getBranchNameForLine(line)      
-
-      if (line.type === ListLineType.Head) {
-        state.scene = Scene.Message  
-        state.message = [`Staying on ${bold(branchName)}`]
-        view(state)
-
-        process.exit(0)
-      }
-
-      const { status, message } = switchBranch(branchName)
-
-      if (status === 0) {
-        saveBranchesJumpData(
-          gitRepoFolder, 
-          updateBranchLastSwitch(branchName, Date.now(), state)
-        )
-      }
-
-      state.scene = Scene.Message
-      state.message = message
-
-      view(state)
-
-      process.exit(status)
-    }
-
-    if (key.equals(UP)) {
-      state.highlightedLineIndex = Math.max(0, state.highlightedLineIndex - 1)
-      view(state)
-
-      return
-    }
-
-    if (key.equals(DOWN)) {
-      state.highlightedLineIndex = Math.min(state.list.length - 1, state.highlightedLineIndex + 1)
-      view(state)
-
-      return
-    }
-
-    if (key.equals(DELETE)) {
-      if (state.searchString.length === 0) {
-        return
-      }
-
-      state.searchString = state.searchString.slice(0, state.searchString.length - 1)  
-      state.searchStringCursorPosition -= 1
-      state.list = generateList(state)
-      state.highlightedLineIndex = 0
-      view(state)
-
-      return
-    }
-  }
-
-  function handleStringKey(key: Buffer) {
-    const inputString = key.toString()
-
-    state.searchString += inputString
-    state.searchStringCursorPosition += inputString.length
-    state.list = generateList(state)
-    state.highlightedLineIndex = 0
-    view(state)
-  }
 
   process.stdin.on('data', (data: Buffer) => {
     // log(data.toString('hex'))

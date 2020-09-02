@@ -19,7 +19,7 @@ function findSequentialIndexes(search: string, target: string): number[] {
 }
 
 export function fuzzyMatch(search: string, target: string): number {
-  const matchedIndexes = findSequentialIndexes(search, target)
+  const matchedIndexes = findSequentialIndexes(search.toLowerCase(), target.toLowerCase())
     .filter(index => index !== -1)
   const matchScore = matchedIndexes.length / search.length
 
