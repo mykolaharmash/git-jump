@@ -563,25 +563,24 @@ function handleSelection(state: State) {
           process.stdout.write(spacer + line + '\n')
         })
 
-
-
         process.exit(status)
       }
 
-      // exec(switchCommand, (error, stdout, stderr) => {
-      //   if (error) {
-      //     log(error.message)
-      //   }
+      const spacer = '   '
+      const lines = [
+        '',
+        red('‣ ') + dim(commandString),
+        ...stdout.toString().split('\n')
+          .reduce((lines: string[], line: string) => {
+            return lines.concat(multilineTextLayout(line, process.stdout.columns - spacer.length))
+          }, []),
+        ''
+      ]
+        
+      lines.forEach(line => {
+        process.stdout.write(spacer + line + '\n')
+      })
 
-      //   log('\n\n')
-      //   log(stdout)
-
-      //   log('\n\n')
-      //   log(stderr)
-
-      // })
-
-      // log(output)
 
       break
     }
