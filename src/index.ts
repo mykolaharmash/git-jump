@@ -569,7 +569,7 @@ function handleSelection(state: State) {
       const spacer = '   '
       const lines = [
         '',
-        red('‣ ') + dim(commandString),
+        green('‣ ') + dim(commandString),
         ...stdout.toString().split('\n')
           .reduce((lines: string[], line: string) => {
             return lines.concat(multilineTextLayout(line, process.stdout.columns - spacer.length))
@@ -580,7 +580,6 @@ function handleSelection(state: State) {
       lines.forEach(line => {
         process.stdout.write(spacer + line + '\n')
       })
-
 
       break
     }
