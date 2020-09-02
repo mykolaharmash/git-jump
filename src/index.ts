@@ -1,4 +1,4 @@
-import {Writable} from 'stream'
+import {Writable, Stream} from 'stream'
 import { exec, execSync, spawnSync } from 'child_process'
 import {existsSync, readdirSync, fstat, writeFile, readFileSync, appendFileSync, opendirSync, Dirent, writeFileSync, mkdirSync} from 'fs'
 import * as fsPath from 'path'
@@ -589,16 +589,19 @@ function getBranchNameForLine(line: ListLine): string | null {
 function gitSwitch(args: string[]): { status: number, message: string[] } {
   const commandString = ['git', 'switch', ...args].join(' ')
 
-  const { stderr, error, status } = spawnSync('git', ['switch', ...args])
+  const { stdout, stderr, error, status } = spawnSync('git', ['switch', ...args])
 
   if (error) {
     throw new Error(`Could not run ${bold(commandString)}.`)
   }
 
+  const cleanLines = (stream: string | Buffer) => stream.toString().trim().split('\n').filter(line => line !== '')
+
   const statusIndicatorColor = status > 0 ? red : green
   const message = [
     statusIndicatorColor('‣ ') + dim(commandString),
-    ...stderr.toString().trim().split('\n')
+    ...cleanLines(stdout),
+    ...cleanLines(stderr)
   ]
 
   return { status, message }
