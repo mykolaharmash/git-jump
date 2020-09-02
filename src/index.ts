@@ -1,6 +1,6 @@
 import {Writable} from 'stream'
 import { exec, execSync, spawnSync } from 'child_process'
-import {readdirSync, fstat, writeFile, readFileSync, appendFileSync, opendirSync, Dirent, writeFileSync} from 'fs'
+import {existsSync, readdirSync, fstat, writeFile, readFileSync, appendFileSync, opendirSync, Dirent, writeFileSync, mkdirSync} from 'fs'
 import * as fsPath from 'path'
 import { parseKeys } from './parseKeys'
 import { fuzzyMatch } from './fuzzy'
@@ -9,15 +9,11 @@ import { fuzzyMatch } from './fuzzy'
 // Sub-commands
 
 function isSubCommand(name: string): boolean {
-  return ['init', 'list', 'new'].includes(name)
+  return ['list', 'new'].includes(name)
 }
 
 function executeSubCommand(name: string, args: string[]) {
   switch (name) {
-    case 'init': {
-      init(args)
-      break
-    }
     case 'list': {
       list(args)
       break
@@ -30,10 +26,6 @@ function executeSubCommand(name: string, args: string[]) {
       throw new Error(`Unknown sub-command ${name}`)
     }
   }
-}
-
-function init(args: string[]) {
-  console.log('init sub-command')
 }
 
 function list(args: string[]) {
@@ -512,7 +504,8 @@ function readRawGitBranches(gitRepoFolder: string): string[] {
 
 type BranchDataCollection =  {[key: string]: BranchData}
 
-const DATA_FILE_PATH = '.jump/data.json'
+const JUMP_FOLDER = '.jump'
+const DATA_FILE_PATH = `${JUMP_FOLDER}/data.json`
 
 function readBranchesJumpData(gitRepoFolder: string): BranchDataCollection {  
   try {
@@ -593,11 +586,10 @@ function getBranchNameForLine(line: ListLine): string | null {
   }
 }
 
-function switchBranch(branchName: string): { status: number, message: string[] } {
-  const args = ['switch', branchName]
-  const commandString = ['git', ...args].join(' ')
+function gitSwitch(args: string[]): { status: number, message: string[] } {
+  const commandString = ['git', 'switch', ...args].join(' ')
 
-  const { stderr, error, status } = spawnSync('git', args)
+  const { stderr, error, status } = spawnSync('git', ['switch', ...args])
 
   if (error) {
     throw new Error(`Could not run ${bold(commandString)}.`)
@@ -610,6 +602,40 @@ function switchBranch(branchName: string): { status: number, message: string[] }
   ]
 
   return { status, message }
+}
+
+function switchBranch(branchName: string, state: State): { status: number, message: string[] } {
+  const switchResult = gitSwitch([branchName])
+
+  if (switchResult.status === 0) {
+    saveBranchesJumpData(
+      state.gitRepoFolder, 
+      updateBranchLastSwitch(branchName, Date.now(), state)
+    )
+  }
+
+  return switchResult
+}
+
+function selectListLine(line: ListLine): void {
+  const branchName = getBranchNameForLine(line)      
+
+  if (line.type === ListLineType.Head) {
+    state.scene = Scene.Message  
+    state.message = [`Staying on ${bold(branchName)}`]
+    view(state)
+
+    process.exit(0)
+  }
+
+  const { status, message } = switchBranch(branchName, state)
+
+  state.scene = Scene.Message
+  state.message = message
+
+  view(state)
+
+  process.exit(status)
 }
 
 function handleSpecialKey(key: Buffer) {
@@ -637,32 +663,9 @@ function handleSpecialKey(key: Buffer) {
   }
 
   if (key.equals(ENTER)) {
-    const line = state.list[state.highlightedLineIndex]
-    const branchName = getBranchNameForLine(line)      
+    selectListLine(state.list[state.highlightedLineIndex])
 
-    if (line.type === ListLineType.Head) {
-      state.scene = Scene.Message  
-      state.message = [`Staying on ${bold(branchName)}`]
-      view(state)
-
-      process.exit(0)
-    }
-
-    const { status, message } = switchBranch(branchName)
-
-    if (status === 0) {
-      saveBranchesJumpData(
-        state.gitRepoFolder, 
-        updateBranchLastSwitch(branchName, Date.now(), state)
-      )
-    }
-
-    state.scene = Scene.Message
-    state.message = message
-
-    view(state)
-
-    process.exit(status)
+    return
   }
 
   if (key.equals(UP)) {
@@ -705,13 +708,7 @@ function handleStringKey(key: Buffer) {
   view(state)
 }
 
-function bare() {
-  state.gitRepoFolder = locateGitRepoFolder(process.cwd())
-  state.currentHEAD = readCurrentHEAD(state.gitRepoFolder)
-  state.branches = readBranchesData(state.gitRepoFolder)
-  state.list = generateList(state)
-  state.highlightedLineIndex = 0
-
+function bare() {  
   view(state)
 
   process.stdin.setRawMode(true)
@@ -735,19 +732,30 @@ function bare() {
 // Jump to a branch
 
 function jumpTo(args: string[]) {
-  console.log('Jumping to a branch')
+  const switchResult = gitSwitch(args)
 
-//   const argsString = args.join(' ')
-// const switchCommand = `git switch ${argsString}`
+  if (switchResult.status === 0) {
+    state.scene = Scene.Message
+    state.message = switchResult.message
 
-// try {
-//   const output = execSync(switchCommand)
+    view(state)
 
-//   console.log(output)
-// } catch (error) {
-//   console.log(error.stderr.toString())
-// }
+    process.exit(0)
+  }
 
+  state.searchString = args[0]
+  state.list = generateList(state)
+
+  if (state.list.length === 0) {
+    state.scene = Scene.Message
+    state.message = [`${bold(state.searchString)} does not mach any branch`]
+
+    view(state)
+
+    process.exit(1)
+  }
+
+  selectListLine(state.list[0])
 }
 
 function multilineTextLayout(text: string, columns: number): string[] {
@@ -787,6 +795,30 @@ function handleError(error: Error): void {
   process.exit(1)
 }
 
+function initialize() {
+  state.gitRepoFolder = locateGitRepoFolder(process.cwd())
+  state.currentHEAD = readCurrentHEAD(state.gitRepoFolder)
+  state.branches = readBranchesData(state.gitRepoFolder)
+  state.list = generateList(state)
+  state.highlightedLineIndex = 0
+
+  const jumpFolderPath = fsPath.join(state.gitRepoFolder, JUMP_FOLDER)
+  const dataFileFullPath = fsPath.join(state.gitRepoFolder, DATA_FILE_PATH)
+
+  if (!existsSync(jumpFolderPath)) {
+    mkdirSync(jumpFolderPath)
+    // Exclude .jump from Git tracking
+    appendFileSync(
+      fsPath.join(state.gitRepoFolder, '.git', 'info', 'exclude'), 
+      `\n${JUMP_FOLDER}`
+    )
+  }
+
+  if (!existsSync(dataFileFullPath)) {
+    writeFileSync(dataFileFullPath, '{}', { flag: 'a' })
+  }
+}
+
 function main(args: string[]) {
 
   process.on('uncaughtException', handleError)
@@ -794,6 +826,8 @@ function main(args: string[]) {
   // process.on('exit', (code) => {
     // If there are updates available, suggest user to update
   // })
+
+  initialize()
 
   if (args.length === 0) {
     bare()
