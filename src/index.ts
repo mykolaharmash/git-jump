@@ -796,11 +796,7 @@ function handleError(error: Error): void {
 }
 
 function initialize() {
-  state.gitRepoFolder = locateGitRepoFolder(process.cwd())
-  state.currentHEAD = readCurrentHEAD(state.gitRepoFolder)
-  state.branches = readBranchesData(state.gitRepoFolder)
-  state.list = generateList(state)
-  state.highlightedLineIndex = 0
+  state.gitRepoFolder = locateGitRepoFolder(process.cwd())  
 
   const jumpFolderPath = fsPath.join(state.gitRepoFolder, JUMP_FOLDER)
   const dataFileFullPath = fsPath.join(state.gitRepoFolder, DATA_FILE_PATH)
@@ -817,6 +813,11 @@ function initialize() {
   if (!existsSync(dataFileFullPath)) {
     writeFileSync(dataFileFullPath, '{}', { flag: 'a' })
   }
+
+  state.currentHEAD = readCurrentHEAD(state.gitRepoFolder)
+  state.branches = readBranchesData(state.gitRepoFolder)
+  state.list = generateList(state)
+  state.highlightedLineIndex = 0
 }
 
 function main(args: string[]) {
