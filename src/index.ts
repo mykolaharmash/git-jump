@@ -1,6 +1,6 @@
 import {Writable} from 'stream'
 import { exec, execSync, spawnSync } from 'child_process'
-import {readdirSync, fstat, writeFile, readFileSync, appendFileSync, opendirSync, Dirent} from 'fs'
+import {readdirSync, fstat, writeFile, readFileSync, appendFileSync, opendirSync, Dirent, writeFileSync} from 'fs'
 import * as fsPath from 'path'
 import { parseKeys } from './parseKeys'
 import { fuzzyMatch } from './fuzzy'
@@ -504,13 +504,21 @@ function readRawGitBranches(gitRepoFolder: string): string[] {
 
 type BranchDataCollection =  {[key: string]: BranchData}
 
-function readBranchesJumpData(gitRepoFolder: string): BranchDataCollection {
-  const dataFilePath = '.jump/data.json'
-  
+const DATA_FILE_PATH = '.jump/data.json'
+
+function readBranchesJumpData(gitRepoFolder: string): BranchDataCollection {  
   try {
-    return JSON.parse(readFileSync(fsPath.join(gitRepoFolder, dataFilePath)).toString())
+    return JSON.parse(readFileSync(fsPath.join(gitRepoFolder, DATA_FILE_PATH)).toString())
   } catch (e) {
-    throw new Error(`JSON in "${dataFilePath}" is not valid, could not parse it.`)
+    throw new Error(`JSON in "${DATA_FILE_PATH}" is not valid, could not parse it.`)
+  }  
+}
+
+function saveBranchesJumpData(gitRepoFolder: string, jumpData: BranchDataCollection): void {
+  try {
+    writeFileSync(fsPath.join(gitRepoFolder, DATA_FILE_PATH), JSON.stringify(jumpData, null, 2))
+  } catch (e) {
+    throw new Error(`Could not write data into "${DATA_FILE_PATH}".`)
   }  
 }
 
@@ -529,6 +537,23 @@ function readBranchesData(gitRepoFolder: string): BranchData[] {
     })
 }
 
+function updateBranchLastSwitch(branchName: string, lastSwitch: number, state: State): BranchDataCollection {
+  return state.branches
+    .map((branch: BranchData) => {
+      if (branch.name !== branchName) {
+        return branch
+      }
+
+      return { ...branch, lastSwitch }
+    })  
+    .filter((branch: BranchData) => branch.lastSwitch !== 0)
+    .reduce((result: BranchDataCollection, branch: BranchData) => {
+      result[branch.name] = branch
+
+      return result
+    }, {})
+}
+
 
 function readCurrentHEAD(gitRepoFolder: string): CurrentHEAD {
   const head = readFileSync(fsPath.join(gitRepoFolder, '.git/HEAD')).toString()
@@ -541,7 +566,12 @@ function readCurrentHEAD(gitRepoFolder: string): CurrentHEAD {
   }
 }
 
-function getBranchNameForLine(line: ListLine): string {
+/**
+ * Reads branch name from provided list line.
+ * Returns null in case current HEAD was selected
+ * and it's detached.
+ */
+function getBranchNameForLine(line: ListLine): string | null {
   switch (line.type) {
     case ListLineType.Head: {
       const content = line.content as CurrentHEAD
@@ -555,8 +585,7 @@ function getBranchNameForLine(line: ListLine): string {
   }
 }
 
-function handleSelection(state: State): { status: number, message: string[] } {
-  const branchName = getBranchNameForLine(state.list[state.highlightedLineIndex])
+function switchBranch(branchName: string): { status: number, message: string[] } {
   const args = ['switch', branchName]
   const commandString = ['git', ...args].join(' ')
 
@@ -583,8 +612,6 @@ function bare() {
   
   state.list = generateList(state)
   state.highlightedLineIndex = 0
-
-  // log(state.list)
 
   view(state)
 
@@ -615,10 +642,25 @@ function bare() {
     }
 
     if (key.equals(ENTER)) {
-      state.lineSelected = true
-      view(state)
+      const line = state.list[state.highlightedLineIndex]
+      const branchName = getBranchNameForLine(line)      
 
-      const { status, message } = handleSelection(state)
+      if (line.type === ListLineType.Head) {
+        state.scene = Scene.Message  
+        state.message = [`Staying on ${bold(branchName)}`]
+        view(state)
+
+        process.exit(0)
+      }
+
+      const { status, message } = switchBranch(branchName)
+
+      if (status === 0) {
+        saveBranchesJumpData(
+          gitRepoFolder, 
+          updateBranchLastSwitch(branchName, Date.now(), state)
+        )
+      }
 
       state.scene = Scene.Message
       state.message = message
@@ -626,8 +668,6 @@ function bare() {
       view(state)
 
       process.exit(status)
-
-      return
     }
 
     if (key.equals(UP)) {
