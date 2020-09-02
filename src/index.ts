@@ -1,5 +1,5 @@
 import {Writable} from 'stream'
-import { execSync } from 'child_process'
+import { exec, execSync, spawnSync } from 'child_process'
 import {readdirSync, fstat, writeFile, readFileSync, appendFileSync, opendirSync, Dirent} from 'fs'
 import * as fsPath from 'path'
 import { parseKeys } from './parseKeys'
@@ -116,6 +116,10 @@ function dim(s: string): string {
 
 function bold(s: string): string {
   return `\x1b[1m${s}\x1b[22m`
+}
+
+function framed(s: string): string {
+  return `\x1b[51m${s}\x1b[22m`
 }
 
 function highlight(s: string): string {
@@ -520,6 +524,70 @@ function readCurrentHEAD(gitRepoFolder: string): CurrentHEAD {
   }
 }
 
+function handleSelection(state: State) {
+  const selectedLine = state.list[state.highlightedLineIndex]
+
+  switch (selectedLine.type) {
+    case ListLineType.Head: {
+      log('selected head, do nothing')
+
+      break
+    }
+
+    case ListLineType.Branch: {
+      const branchData = selectedLine.content as BranchData
+      const args = ['switch', branchData.name]
+      const commandString = ['git', ...args].join(' ')
+
+      const { stdout, stderr, error, status } = spawnSync('git', args)
+
+      if (error) {
+        throw new Error(`Could not run ${bold(commandString)}.`)
+      }
+
+      if (stderr.length > 0) {
+        clear()
+
+        const spacer = '   '
+        const lines = [
+          '',
+          red('‣ ') + dim(commandString),
+          ...stderr.toString().split('\n')
+            .reduce((lines: string[], line: string) => {
+              return lines.concat(multilineTextLayout(line, process.stdout.columns - spacer.length))
+            }, []),
+          ''
+        ]
+          
+        lines.forEach(line => {
+          process.stdout.write(spacer + line + '\n')
+        })
+
+
+
+        process.exit(status)
+      }
+
+      // exec(switchCommand, (error, stdout, stderr) => {
+      //   if (error) {
+      //     log(error.message)
+      //   }
+
+      //   log('\n\n')
+      //   log(stdout)
+
+      //   log('\n\n')
+      //   log(stderr)
+
+      // })
+
+      // log(output)
+
+      break
+    }
+  }
+}
+
 function bare() {
   const gitRepoFolder = locateGitRepoFolder(process.cwd())
 
@@ -560,10 +628,11 @@ function bare() {
     }
 
     if (key.equals(ENTER)) {
-      // state.lineSelected = true
-      // view(state)
+      state.lineSelected = true
+      view(state)
 
       state.scene = Scene.SelectionLogs
+      handleSelection(state)
       view(state)
 
       return
@@ -652,7 +721,8 @@ function multilineTextLayout(text: string, columns: number): string[] {
   return words.slice(1).reduce((lines, word) => {
     const currentLine = lines[lines.length - 1]
 
-    if (currentLine.length + word.length <= columns) {
+    // + 1 at the end is wor space in front of the word
+    if (currentLine.length + word.length + 1 <= columns) {
       lines[lines.length - 1] = currentLine + ' ' + word
     } else {
       lines.push(word)
