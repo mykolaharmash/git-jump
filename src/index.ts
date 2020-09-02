@@ -71,7 +71,7 @@ interface ListLine {
 
 enum Scene {
   List,
-  SelectionLogs
+  Message
 }
 
 interface State {
@@ -85,7 +85,8 @@ interface State {
   currentHEAD: CurrentHEAD,
   list: ListLine[],
   lineSelected: boolean,
-  scene: Scene
+  scene: Scene,
+  message: string[]
 }
 
 const state: State = {
@@ -103,14 +104,11 @@ const state: State = {
   },
   list: [],
   lineSelected: false,
-  scene: Scene.List
+  scene: Scene.List,
+  message: []
 }
 
 function dim(s: string): string {
-  if (s === '') {
-    ''
-  }
-
   return `\x1b[2m${s}\x1b[22m`
 }
 
@@ -295,9 +293,28 @@ function view(state: State) {
       break
     }
 
-    case Scene.SelectionLogs: {
+    case Scene.Message: {
       clear()
-      render(['Helloooo!'])
+
+      const lineSpacer = '  '
+      const lines = [
+        '',
+        ...state.message.reduce((lines: string[], line: string) => {
+          if (line === '') {
+            lines.push('')
+
+            return lines
+          }
+
+          return lines.concat(multilineTextLayout(line, process.stdout.columns - lineSpacer.length))
+        }, []).map(line => lineSpacer + line),
+        '',
+        ''
+      ]
+
+      render(lines)
+
+      break
     }
   }
 }
@@ -524,66 +541,38 @@ function readCurrentHEAD(gitRepoFolder: string): CurrentHEAD {
   }
 }
 
-function handleSelection(state: State) {
-  const selectedLine = state.list[state.highlightedLineIndex]
-
-  switch (selectedLine.type) {
+function getBranchNameForLine(line: ListLine): string {
+  switch (line.type) {
     case ListLineType.Head: {
-      log('selected head, do nothing')
+      const content = line.content as CurrentHEAD
 
-      break
+      return content.detached ? content.sha : content.branchName
     }
 
     case ListLineType.Branch: {
-      const branchData = selectedLine.content as BranchData
-      const args = ['switch', branchData.name]
-      const commandString = ['git', ...args].join(' ')
-
-      const { stdout, stderr, error, status } = spawnSync('git', args)
-
-      if (error) {
-        throw new Error(`Could not run ${bold(commandString)}.`)
-      }
-
-      if (stderr.length > 0) {
-        clear()
-
-        const spacer = '   '
-        const lines = [
-          '',
-          red('‣ ') + dim(commandString),
-          ...stderr.toString().split('\n')
-            .reduce((lines: string[], line: string) => {
-              return lines.concat(multilineTextLayout(line, process.stdout.columns - spacer.length))
-            }, []),
-          ''
-        ]
-          
-        lines.forEach(line => {
-          process.stdout.write(spacer + line + '\n')
-        })
-
-        process.exit(status)
-      }
-
-      const spacer = '   '
-      const lines = [
-        '',
-        green('‣ ') + dim(commandString),
-        ...stdout.toString().split('\n')
-          .reduce((lines: string[], line: string) => {
-            return lines.concat(multilineTextLayout(line, process.stdout.columns - spacer.length))
-          }, []),
-        ''
-      ]
-        
-      lines.forEach(line => {
-        process.stdout.write(spacer + line + '\n')
-      })
-
-      break
+      return (line.content as BranchData).name
     }
   }
+}
+
+function handleSelection(state: State): { status: number, message: string[] } {
+  const branchName = getBranchNameForLine(state.list[state.highlightedLineIndex])
+  const args = ['switch', branchName]
+  const commandString = ['git', ...args].join(' ')
+
+  const { stderr, error, status } = spawnSync('git', args)
+
+  if (error) {
+    throw new Error(`Could not run ${bold(commandString)}.`)
+  }
+
+  const statusIndicatorColor = status > 0 ? red : green
+  const message = [
+    statusIndicatorColor('‣ ') + dim(commandString),
+    ...stderr.toString().trim().split('\n')
+  ]
+
+  return { status, message }
 }
 
 function bare() {
@@ -629,9 +618,14 @@ function bare() {
       state.lineSelected = true
       view(state)
 
-      state.scene = Scene.SelectionLogs
-      handleSelection(state)
+      const { status, message } = handleSelection(state)
+
+      state.scene = Scene.Message
+      state.message = message
+
       view(state)
+
+      process.exit(status)
 
       return
     }
@@ -731,25 +725,17 @@ function multilineTextLayout(text: string, columns: number): string[] {
 }
 
 function handleError(error: Error): void {
-  const spacing = '  '
+  state.scene = Scene.Message
+  state.message = [
+    `${red('Error:')} ${error.message}`,
+    '',
+    `${bold('What to do?')}`,
+    'Help improve git-jump, create GitHub issue with this error and steps to reproduce it. Thank you!',
+    '',
+    `GitHub Issues: https://github.com/mykolaharmash/git-jump/issues`
+  ]
 
-  clear()
-  render([
-    '',
-    `${spacing}${red('Error:')} ${error.message}`,
-    '',
-    `${spacing}${bold('What to do?')}`,
-    ...multilineTextLayout(
-      'Help improve git-jump, create GitHub issue with this error and steps to reproduce it. Thank you!', 
-      process.stdout.columns - spacing.length
-    ).map(line => `${spacing}${line}`),
-    '',
-    `${spacing}GitHub Issues: https://github.com/mykolaharmash/git-jump/issues`,
-    '',
-    ''
-  ])
-
-  // console.log(error)
+  view(state)
 
   process.exit(1)
 }
