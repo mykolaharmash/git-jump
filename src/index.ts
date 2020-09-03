@@ -1,3 +1,4 @@
+import * as os from 'os'
 import {Writable, Stream} from 'stream'
 import { exec, execSync, spawnSync } from 'child_process'
 import {existsSync, readdirSync, fstat, writeFile, readFileSync, appendFileSync, opendirSync, Dirent, writeFileSync, mkdirSync} from 'fs'
@@ -177,7 +178,7 @@ function calculateLayout(state: State): LayoutColumn[] {
   ]
 }
 
-function highlightLine(line: string, lineIndex: number, highlightedLineIndex: number, selected: true) {
+function highlightLine(line: string, lineIndex: number, highlightedLineIndex: number, selected: boolean = false) {
   if (lineIndex === highlightedLineIndex) {
     return selected ? green(line) : highlight(line)
   }
@@ -191,6 +192,16 @@ function addScrollIndicator(line: string, lineIndex: number, listLength: number,
   }
 
   return line
+}
+
+function truncate(s: string, maxWidth: number): string {
+  let truncated = s.slice(0, maxWidth)
+
+  if (truncated.length < s.length) {
+    truncated = `${truncated.substring(0, truncated.length - 1)}…`
+  }
+
+  return truncated
 }
 
 // Views
@@ -215,14 +226,8 @@ function viewBranch(
       return line + (index < 10 ? ` ${dim(index.toString())} ` : '   ')
     }
 
-    if (column.type === LayoutColumnType.BranchName) {
-      let truncatedName = branch.name.slice(0, column.width)
-
-      if (truncatedName.length < branch.name.length) {
-        truncatedName = `${truncatedName.substring(0, truncatedName.length - 1)}…`
-      }
-      
-      return line + truncatedName.padEnd(column.width, ' ')
+    if (column.type === LayoutColumnType.BranchName) {      
+      return line + truncate(branch.name, column.width).padEnd(column.width, ' ')
     }
 
     return line
@@ -255,7 +260,7 @@ function viewList(state: State): string[] {
   })
     .map((line, index) => {
       return addScrollIndicator(
-        highlightLine(line, index, state.highlightedLineIndex, state.lineSelected),
+        highlightLine(line, index, state.highlightedLineIndex),
         index,
         state.list.length,
         listWindow,
@@ -265,11 +270,42 @@ function viewList(state: State): string[] {
     .slice(listWindow.topIndex, listWindow.bottomIndex + 1)
 }
 
-function viewSearch(state: State): string {
-  const SEARCH_PLACEHOLDER = 'Search'
-  const search = state.searchString === '' ? dim(SEARCH_PLACEHOLDER) : state.searchString
+function viewQuickSelectHint(maxIndex: number, columnWidth: number): string {
+  const trailingIndex = maxIndex > 0 ? `..${maxIndex}` : ''
+  const modifierKey = os.type() === 'Darwin' ? '⌥' : 'Alt'
 
-  return `${branchIndexPadding}${search}`
+  return dim(`${modifierKey}+0${trailingIndex} quick select `.padStart(columnWidth, ' '))
+}
+
+function viewSearch(state: State, width: number): string {
+  const SEARCH_PLACEHOLDER = 'Search'
+
+  return state.searchString === '' ? dim(SEARCH_PLACEHOLDER.padEnd(width, ' ')) : truncate(state.searchString, width).padEnd(width, ' ')
+}
+
+function viewSearchLine(state: State): string {
+  const searchPlaceholderWidth = 6
+  const searchWidth = Math.min(
+    state.columns - branchIndexPadding.length, 
+    Math.max(state.searchString.length, searchPlaceholderWidth)
+  )
+  const hintMinWidth = 25
+
+  let line = branchIndexPadding + viewSearch(state, searchWidth)
+  const hintColumnWidth = state.columns - (branchIndexPadding.length + searchWidth)
+
+  if (hintColumnWidth < hintMinWidth) {
+    return line
+  }
+  
+  const quickSelectBranches = state.list.filter((line: ListLine) => {
+    return line.type !== ListLineType.Head
+  })
+  const maxQuickSelectIndex = Math.min(9, quickSelectBranches.length - 1)
+
+  line += viewQuickSelectHint(maxQuickSelectIndex, hintColumnWidth)
+  
+  return line
 }
 
 function view(state: State) {
@@ -277,7 +313,7 @@ function view(state: State) {
     case Scene.List: {
       let lines: string[] = []
 
-      lines.push(viewSearch(state))
+      lines.push(viewSearchLine(state))
       lines = lines.concat(viewList(state))
 
       clear()
