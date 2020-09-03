@@ -10,18 +10,51 @@ import * as readline from 'readline'
 
 // Sub-commands
 
-function isSubCommand(name: string): boolean {
-  return ['list', 'new'].includes(name)
+function isSubCommand(args: string[]): boolean {  
+  const isDashDashSubCommand = [
+    '--list', 
+    '--version', 
+    '--help',
+    '-l',
+    '-v',
+    '-h'
+  ].includes(args[0])
+
+  const isMultiArgumentSubCommand = (
+    args.length > 1 
+    && ['new', 'delete', 'rename'].includes(args[0])
+  )
+
+  return isDashDashSubCommand || isMultiArgumentSubCommand
 }
 
 function executeSubCommand(name: string, args: string[]) {
   switch (name) {
-    case 'list': {
-      list(args)
+    case '--list':
+    case '-l': {
+      listSubCommand()
+      break
+    }
+    case '--version':
+    case '-v': {
+      console.log('version')
+      break
+    }
+    case '--help':
+    case '-h': {
+      console.log('help')
       break
     }
     case 'new': {
       create(args)
+      break
+    }
+    case 'rename': {
+      console.log('rename')
+      break
+    }
+    case 'delete': {
+      console.log('delete')
       break
     }
     default: {
@@ -30,8 +63,10 @@ function executeSubCommand(name: string, args: string[]) {
   }
 }
 
-function list(args: string[]) {
-  console.log('list sub-command')
+function listSubCommand() {
+  state.isInteractive = false
+
+  view(state)
 }
 
 function create(args: string[]) {
@@ -82,6 +117,7 @@ interface State {
   scene: Scene
   message: string[]
   gitRepoFolder: string | null
+  isInteractive: boolean
 }
 
 const state: State = {
@@ -101,7 +137,8 @@ const state: State = {
   lineSelected: false,
   scene: Scene.List,
   message: [],
-  gitRepoFolder: null
+  gitRepoFolder: null,
+  isInteractive: true
 }
 
 function dim(s: string): string {
@@ -215,12 +252,22 @@ function getQuickSelectLines(list: ListLine[]): ListLine[] {
 
 const branchIndexPadding = '   '
 
-function viewCurrentHEAD(currentHEAD: CurrentHEAD): string {
-  if (!currentHEAD.detached) {
-    return `${branchIndexPadding}${bold(currentHEAD.branchName)}`
-  }
+function viewCurrentHEAD(currentHEAD: CurrentHEAD, layout: LayoutColumn[]): string {
+  return layout.reduce((line: string, column: LayoutColumn) => {
+    if (column.type === LayoutColumnType.Index) {
+      return line + branchIndexPadding
+    }
 
-  return `${branchIndexPadding}${bold(currentHEAD.sha)} ${dim('(detached)')}`
+    if (column.type === LayoutColumnType.BranchName) {      
+      const branch = currentHEAD.detached 
+        ? `${bold(currentHEAD.sha)} ${dim('(detached)')}`
+        : bold(currentHEAD.branchName) 
+
+      return line + branch
+    }
+
+    return line
+  }, '') 
 }
 
 function viewBranch(
@@ -230,7 +277,7 @@ function viewBranch(
 ): string {
   return layout.reduce((line: string, column: LayoutColumn) => {
     if (column.type === LayoutColumnType.Index) {
-      return line + (index < 10 ? ` ${dim(index.toString())} ` : '   ')
+      return line + (index < 10 ? ` ${dim(index.toString())} ` : branchIndexPadding)
     }
 
     if (column.type === LayoutColumnType.BranchName) {      
@@ -241,18 +288,11 @@ function viewBranch(
   }, '')  
 }
 
-function viewList(state: State): string[] {  
-  if (state.list.length === 0) {
-    return [`${branchIndexPadding}${dim('No such branches')}`]
-  }
-  
-  const layout = calculateLayout(state)
-  const listWindow = calculateLinesWindow(state.list.length, state.highlightedLineIndex)
-
+function viewListLines(state: State, layout: LayoutColumn[]): string[] {
   return state.list.map((line: ListLine, index: number) => {
     switch (line.type) {
       case ListLineType.Head: {
-        return viewCurrentHEAD(line.content as CurrentHEAD)
+        return viewCurrentHEAD(line.content as CurrentHEAD, layout)
       }
 
       case ListLineType.Branch: {
@@ -262,9 +302,27 @@ function viewList(state: State): string[] {
           layout
         )
       }
-    }
-    
+    }    
   })
+}
+
+function viewNonInteractiveList(state: State): string[] {
+  const layout = [
+    { type: LayoutColumnType.BranchName, width: state.columns },
+  ]
+
+  return viewListLines(state, layout)
+}
+
+function viewList(state: State): string[] {  
+  if (state.list.length === 0) {
+    return [`${branchIndexPadding}${dim('No such branches')}`]
+  }
+  
+  const layout = calculateLayout(state)
+  const listWindow = calculateLinesWindow(state.list.length, state.highlightedLineIndex)
+
+  return viewListLines(state, layout)
     .map((line, index) => {
       return addScrollIndicator(
         highlightLine(line, index, state.highlightedLineIndex),
@@ -313,6 +371,13 @@ function viewSearchLine(state: State): string {
 }
 
 function view(state: State) {
+  if (!state.isInteractive) {
+    // concat(['']) will add trailing newline
+    render(viewNonInteractiveList(state).concat(['']))
+
+    return
+  }
+
   switch (state.scene) {
     case Scene.List: {
       let lines: string[] = []
@@ -322,6 +387,7 @@ function view(state: State) {
 
       clear()
       render(lines)
+
       cursorTo(branchIndexPadding.length + state.searchStringCursorPosition + 1, 1)
 
       break
@@ -777,10 +843,14 @@ function handleStringKey(key: Buffer) {
 function bare() {  
   view(state)
 
+  if (!state.isInteractive) {
+    process.exit(0)
+  }
+
   process.stdin.setRawMode(true)
 
   process.stdin.on('data', (data: Buffer) => {
-    log(data.toString('hex'))
+    // log(data.toString('hex'))
 
     parseKeys(data).forEach((key: Buffer) => {
       if (isSpecialKey(key)) {
@@ -790,8 +860,7 @@ function bare() {
       }
 
       handleStringKey(key)
-    })
-    
+    })    
   })
 }
 
@@ -862,6 +931,7 @@ function handleError(error: Error): void {
 }
 
 function initialize() {
+  state.isInteractive = process.stdout.isTTY === true
   state.gitRepoFolder = locateGitRepoFolder(process.cwd())  
 
   const jumpFolderPath = fsPath.join(state.gitRepoFolder, JUMP_FOLDER)
@@ -902,7 +972,7 @@ function main(args: string[]) {
     return
   }
 
-  if (isSubCommand(args[0])) {
+  if (isSubCommand(args)) {
     executeSubCommand(args[0], args.slice(1))
 
     return
