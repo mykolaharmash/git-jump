@@ -46,7 +46,7 @@ function executeSubCommand(name: string, args: string[]) {
       break
     }
     case 'new': {
-      create(args)
+      newSubCommand(args)
       break
     }
     case 'rename': {
@@ -69,8 +69,19 @@ function listSubCommand() {
   view(state)
 }
 
-function create(args: string[]) {
-  console.log('new sub-command')
+function newSubCommand(args: string[]) {
+  const { status, message } = gitSwitch(['-c', ...args])
+
+  state.scene = Scene.Message
+  state.message = message
+
+  if (status === 0) {
+    updateBranchLastSwitch(args[0], Date.now(), state)
+  }
+
+  view(state)
+
+  process.exit(status)
 }
 
 
@@ -149,16 +160,16 @@ function bold(s: string): string {
   return `\x1b[1m${s}\x1b[22m`
 }
 
-function framed(s: string): string {
-  return `\x1b[51m${s}\x1b[22m`
-}
-
 function highlight(s: string): string {
   return `\x1b[38;5;4m${s}\x1b[39m`
 }
 
 function green(s: string): string {
   return `\x1b[38;5;2m${s}\x1b[39m`
+}
+
+function yellow(s: string): string {
+  return `\x1b[38;5;3m${s}\x1b[39m`
 }
 
 function red(s: string): string {
@@ -289,16 +300,20 @@ function viewBranch(
 }
 
 function viewListLines(state: State, layout: LayoutColumn[]): string[] {
-  return state.list.map((line: ListLine, index: number) => {
+  let quickSelectIndex = -1
+
+  return state.list.map((line: ListLine) => {
     switch (line.type) {
       case ListLineType.Head: {
         return viewCurrentHEAD(line.content as CurrentHEAD, layout)
       }
 
       case ListLineType.Branch: {
+        quickSelectIndex++
+
         return viewBranch(
           line.content as BranchData, 
-          index - (state.list[0].type === ListLineType.Head ? 1 : 0), 
+          quickSelectIndex, 
           layout
         )
       }
@@ -371,15 +386,15 @@ function viewSearchLine(state: State): string {
 }
 
 function view(state: State) {
-  if (!state.isInteractive) {
-    // concat(['']) will add trailing newline
-    render(viewNonInteractiveList(state).concat(['']))
-
-    return
-  }
-
   switch (state.scene) {
     case Scene.List: {
+      if (!state.isInteractive) {
+        // concat(['']) will add trailing newline
+        render(viewNonInteractiveList(state).concat(['']))
+    
+        return
+      }
+
       let lines: string[] = []
 
       lines.push(viewSearchLine(state))
@@ -527,8 +542,8 @@ enum ListSortCriterion {
 function sortedListLines(list: ListLine[], criterion: ListSortCriterion): ListLine[] {
   if (criterion === ListSortCriterion.LastSwitch) {
     return list.slice().sort((a: ListLine, b: ListLine) => {
-      if (a.type === ListLineType.Head) {
-        return 0
+      if (b.type === ListLineType.Head) {
+        return 1
       }
 
       return (b.content as BranchData).lastSwitch - (a.content as BranchData).lastSwitch
@@ -655,21 +670,12 @@ function readBranchesData(gitRepoFolder: string): BranchData[] {
     })
 }
 
-function updateBranchLastSwitch(branchName: string, lastSwitch: number, state: State): BranchDataCollection {
-  return state.branches
-    .map((branch: BranchData) => {
-      if (branch.name !== branchName) {
-        return branch
-      }
+function updateBranchLastSwitch(name: string, lastSwitch: number, state: State): void {
+  const jumpData = readBranchesJumpData(state.gitRepoFolder)
+  
+  jumpData[name] = { name, lastSwitch }
 
-      return { ...branch, lastSwitch }
-    })  
-    .filter((branch: BranchData) => branch.lastSwitch !== 0)
-    .reduce((result: BranchDataCollection, branch: BranchData) => {
-      result[branch.name] = branch
-
-      return result
-    }, {})
+  saveBranchesJumpData(state.gitRepoFolder, jumpData)
 }
 
 
@@ -728,10 +734,7 @@ function switchBranch(branchName: string, state: State): { status: number, messa
   const switchResult = gitSwitch([branchName])
 
   if (switchResult.status === 0) {
-    saveBranchesJumpData(
-      state.gitRepoFolder, 
-      updateBranchLastSwitch(branchName, Date.now(), state)
-    )
+    updateBranchLastSwitch(branchName, Date.now(), state)
   }
 
   return switchResult
@@ -883,7 +886,7 @@ function jumpTo(args: string[]) {
 
   if (state.list.length === 0) {
     state.scene = Scene.Message
-    state.message = [`${bold(state.searchString)} does not mach any branch`]
+    state.message = [`${bold(yellow(state.searchString))} does not mach any branch`]
 
     view(state)
 
