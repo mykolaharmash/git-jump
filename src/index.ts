@@ -42,7 +42,7 @@ function executeSubCommand(name: string, args: string[]) {
     }
     case '--help':
     case '-h': {
-      console.log('help')
+      helpSubCommand()
       break
     }
     case 'new': {
@@ -63,13 +63,13 @@ function executeSubCommand(name: string, args: string[]) {
   }
 }
 
-function listSubCommand() {
+function listSubCommand(): void {
   state.isInteractive = false
 
   view(state)
 }
 
-function newSubCommand(args: string[]) {
+function newSubCommand(args: string[]): void {
   const { status, message } = gitSwitch(['-c', ...args])
 
   state.scene = Scene.Message
@@ -82,6 +82,31 @@ function newSubCommand(args: string[]) {
   view(state)
 
   process.exit(status)
+}
+
+function helpSubCommand(): void {
+  let help = readFileSync(fsPath.join(__dirname, '../src/help.txt')).toString()
+
+  help = help.replace(/\{bold\}(.+)\{\/bold\}/g, (substring, content) => bold(content))
+  help = help.replace(/\{dim\}(.+)\{\/dim\}/g, (substring, content) => dim(content))
+  help = help.replace(/\{wrap:(\d+)\}(.+)\{\/wrap\}/g, (substring, paddingSize, content) => {
+    // console.log(multilineTextLayout(
+    //   content, 
+    //   process.stdout.columns - parseInt(paddingSize)
+    // ))
+    return multilineTextLayout(
+      content.trim(), 
+      process.stdout.columns - parseInt(paddingSize)
+    ).map((line, index) => {
+      // Padding only the lines which wrap to the next line,
+      // first line supposed to be already padded
+      return index === 0 ? line : ' '.repeat(paddingSize) + line
+    }).join('\n')
+  })
+
+  process.stdout.write(help)
+
+  process.exit(0)
 }
 
 

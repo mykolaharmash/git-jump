@@ -1,0 +1,43 @@
+
+  Git Branches Helper
+
+  {bold}Usage:{/bold}
+    {dim}${/dim} git jump <fuzzy branch name>
+      Switches to the best matching branch.
+
+    {dim}${/dim} git jump
+      Starts interactive interface.
+
+
+  {bold}Interactive Interface:{/bold}
+    • Arrows ↓↑ to navigate the list
+    • Enter ⏎ to switch into a branch
+    • Type to search
+    • Option+0..9 to quickly jump to a brunch from the list 
+      Alt+0..9 on Window and Linux
+
+
+  {bold}Sub-Commands:{/bold}
+    {dim}${/dim} git jump --list
+      {wrap:6}Shows a plain list of branches without interactive interface. Use it to pipe the list of branches to other tools like "grep".{/wrap}
+      Shortcut: -l
+
+    {dim}${/dim} git jump new <branch name>
+      Creates a new branch and switches into it. 
+      {wrap:6}A proxy to the native "git switch -c <branch name>", so all the standard options are supported.{/wrap}
+      {wrap:6}See https://git-scm.com/docs/git-switch for the list of options.{/wrap}
+
+    {dim}${/dim} git jump delete <branch name>
+      {wrap:6}Deletes a branch. Proxy to the native "git branch --delete <branch name>".{/wrap}
+
+    {dim}${/dim} git jump rename <branch name> <new branch name>
+      {wrap:6}Renames local branch. Proxy to the native "git branch --move <branch name> <new branch name>".{/wrap}
+
+
+  {bold}Support:{/bold}
+    {wrap:4}Most of the support happens through the GitHub repo https://github.com/mykolaharmash/git-jump.{/wrap}
+    
+    {wrap:4}Please create a new issue if you think something is wrong with git-jump or you'd like to see some new feature.{/wrap}
+
+    {wrap:4}You can also contact me directly at mykola.harmash@gmail.com.{/wrap}
+
