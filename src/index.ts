@@ -5,6 +5,7 @@ import {existsSync, readdirSync, fstat, writeFile, readFileSync, appendFileSync,
 import * as fsPath from 'path'
 import { parseKeys } from './parseKeys'
 import { fuzzyMatch } from './fuzzy'
+import * as readline from 'readline'
 
 
 // Sub-commands
@@ -204,6 +205,12 @@ function truncate(s: string, maxWidth: number): string {
   return truncated
 }
 
+function getQuickSelectLines(list: ListLine[]): ListLine[] {
+  return list.filter((line: ListLine) => {
+    return line.type !== ListLineType.Head
+  }).slice(0, 10)
+}
+
 // Views
 
 const branchIndexPadding = '   '
@@ -298,12 +305,9 @@ function viewSearchLine(state: State): string {
     return line
   }
   
-  const quickSelectBranches = state.list.filter((line: ListLine) => {
-    return line.type !== ListLineType.Head
-  })
-  const maxQuickSelectIndex = Math.min(9, quickSelectBranches.length - 1)
+  const quickSelectLines = getQuickSelectLines(state.list)
 
-  line += viewQuickSelectHint(maxQuickSelectIndex, hintColumnWidth)
+  line += viewQuickSelectHint(quickSelectLines.length - 1, hintColumnWidth)
   
   return line
 }
@@ -432,6 +436,17 @@ function isC0C1ControlCode(data: Buffer): boolean {
 
 function isDeleteKey(data: Buffer) {
   return data.length === 1 && data[0] === DELETE[0]
+}
+
+function isMetaPlusNumberCombination(key: Buffer) {
+  if (key.length === 2 && key[0] === escapeCode) {
+    return key[1] >= 0x30 && key[1] <=0x39
+  }
+}
+
+function getNumberFromMetaPlusCombination(key: Buffer): number {
+  // E.g. number = 5 = 0x35 = 0011 0101; 0011 0101 & 0000 1111 = 0000 0101 = 5
+  return key[1] & 0x0F
 }
 
 function isSpecialKey(key: Buffer): boolean {
@@ -694,6 +709,7 @@ function handleSpecialKey(key: Buffer) {
   // 1b7f - Option+Delete, delete whole word
   // 17 - Control+w, delete the whole line
   // 0b - Control+k, delete from cursor to the end of the line
+  // 1b30 .. 1b39 - Alt+0..9
 
   if (key.equals(CTRL_C)) {
     clear()
@@ -734,6 +750,17 @@ function handleSpecialKey(key: Buffer) {
 
     return
   }
+
+  if (isMetaPlusNumberCombination(key)) {
+    const quickSelectIndex = getNumberFromMetaPlusCombination(key)
+    const quickSelectLines = getQuickSelectLines(state.list)
+
+    if (quickSelectIndex < quickSelectLines.length) {
+      selectListLine(quickSelectLines[quickSelectIndex])
+    }
+
+    return
+  }
 }
 
 function handleStringKey(key: Buffer) {
@@ -753,7 +780,7 @@ function bare() {
   process.stdin.setRawMode(true)
 
   process.stdin.on('data', (data: Buffer) => {
-    // log(data.toString('hex'))
+    log(data.toString('hex'))
 
     parseKeys(data).forEach((key: Buffer) => {
       if (isSpecialKey(key)) {
