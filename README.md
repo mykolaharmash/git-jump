@@ -72,7 +72,9 @@ Deletes a branch.
 ## How It Looks In Action
 
 <center>
-  <video src="./demo.mp4" muted autoplay loop></video>
+
+  ![git jump interactive interface](./demo.gif)
+
 </center>
 
 
