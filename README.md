@@ -1,4 +1,4 @@
-![git-jump CLI logo](./github-banner.png)
+![git-jump CLI logo](./github-banner.svg)
 
 # Git Branches Helper
 
