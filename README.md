@@ -7,6 +7,8 @@ All native `git switch ⋯` features, plus:
 * Branches are sorted by usage recency
 * Fuzzy search
 
+See [how it looks](#How-It-Looks-In-Action).
+
 ## Install
 
 ## Usage
@@ -15,24 +17,21 @@ All native `git switch ⋯` features, plus:
 git jump
 ```
 
-Run without any arguments to launch [interactive UI](#how-it-looks).
+Run without any arguments to launch [interactive UI](#How-It-Looks-In-Action).
 
-At first, branches are not sorted. Once you start switching around, `git jump` will track the history and sort the list, so that the most recently used branches are at the top and can be accessed faster.
+* At first, branches are not sorted. Once you start switching around, `git jump` will track the history and sort the list, so that the most recently used branches are at the top and can be accessed faster.
+* Navigate the list with ↓↑ arrows and hit enter ⏎ to switch into selected branch.
+* On the left hand side of the list you'll see a number next to a brunch name. Use <kbd>Option</kbd>+<kbd>\<number\></kbd> for quick switch (<kbd>Alt</kbd>+<kbd>\<number\></kbd> on Windows and Linux).
+* Start typing to filter the list. The search is fuzzy, you don't have to be precise.
 
-Navigate the list with ↓↑ arrows and hit enter ⏎ to switch into selected branch.
-
-On the left hand side of the list you'll see a number next to a brunch name. Use <kbd>Option</kbd>+<kbd>\<number\></kbd> for quick switch (<kbd>Alt</kbd>+<kbd>\<number\></kbd> on Windows and Linux).
-
-Start typing to filter the list. The search is fuzzy, you don't have to be precise.
-
-
+<br>
 ```shell
 git jump <branch name>
 ```
 
 Switches to a branch. `<branch name>` can be just part of the name, `git jump` will look for the best matching branch.
 
-
+<br>
 ```shell
 git jump <any native switch arguments>
 ```
@@ -41,21 +40,19 @@ You can use `git jump` as a drop-in replacement for [native `git switch`](https:
 
 For example `git jump my-branch --track origin/main --quiet` Works just fine.
 
-
+<br>
 ```shell
 git jump new <branch name>
 ```
-
 Creates a new branch and switches into it.
 
-
+<br>
 ```shell
 git jump rename <branch name> <new branch name>
 ```
-
 Renames a branch.
 
-
+<br>
 ```shell
 git jump delete <branch name>
 ```
@@ -88,7 +85,7 @@ In Preferences go to `Profiles`, select your profile and go to `Keyboard`. Enabl
 
 Open `.hyper.js` and add next line to the `config` section:
 
-```json
+```js
 modifierKeys: { altIsMeta: true }
 ```
 
