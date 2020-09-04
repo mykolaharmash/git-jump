@@ -72,9 +72,7 @@ Deletes a branch.
 ## How It Looks In Action
 
 <center>
-
-  ![git jump interactive interface](./demo.gif)
-
+  <img src="./demo.gif" alt="git jump interactive interface" width="400px" />
 </center>
 
 
