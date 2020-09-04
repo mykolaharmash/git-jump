@@ -24,14 +24,14 @@ Run without any arguments to launch [interactive UI](#How-It-Looks-In-Action).
 * On the left hand side of the list you'll see a number next to a brunch name. Use <kbd>Option</kbd>+<kbd>\<number\></kbd> for quick switch (<kbd>Alt</kbd>+<kbd>\<number\></kbd> on Windows and Linux).
 * Start typing to filter the list. The search is fuzzy, you don't have to be precise.
 
-<br>
+<br />
 ```shell
 git jump <branch name>
 ```
 
 Switches to a branch. `<branch name>` can be just part of the name, `git jump` will look for the best matching branch.
 
-<br>
+<br />
 ```shell
 git jump <any native switch arguments>
 ```
@@ -40,19 +40,19 @@ You can use `git jump` as a drop-in replacement for [native `git switch`](https:
 
 For example `git jump my-branch --track origin/main --quiet` Works just fine.
 
-<br>
+<br />
 ```shell
 git jump new <branch name>
 ```
 Creates a new branch and switches into it.
 
-<br>
+<br />
 ```shell
 git jump rename <branch name> <new branch name>
 ```
 Renames a branch.
 
-<br>
+<br />
 ```shell
 git jump delete <branch name>
 ```
