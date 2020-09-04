@@ -33,6 +33,13 @@ Switches to a branch. `<branch name>` can be just part of the name, `git jump` w
 <br />
 
 ```shell
+git jump [--list | -l]
+```
+Shows a plain list of branches without interactive UI but with sorting.
+
+<br />
+
+```shell
 git jump <any native switch arguments>
 ```
 
@@ -64,12 +71,12 @@ Deletes a branch.
 
 ## How It Looks In Action
 
-...Video of the tool...
+<video src="./demo.mp4" muted autoplay loop></video>
 
 
 ## How To Enable <kbd>Option/Alt</kbd>+<kbd>\<number\></kbd> Shortcut
 
-In some terminals this shortcut might be disabled by default, here is how to make it work in some apps:
+It might be disabled by default in your terminal, here is how to make it work in some apps.
 
 ### iTerm 2
 
