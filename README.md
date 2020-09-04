@@ -71,7 +71,9 @@ Deletes a branch.
 
 ## How It Looks In Action
 
-<video src="./demo.mp4" muted autoplay loop></video>
+<center>
+  <video src="./demo.mp4" muted autoplay loop></video>
+</center>
 
 
 ## How To Enable <kbd>Option/Alt</kbd>+<kbd>\<number\></kbd> Shortcut
