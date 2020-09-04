@@ -71,9 +71,9 @@ Deletes a branch.
 
 ## How It Looks In Action
 
-<center>
-  <img src="./demo.gif" alt="git jump interactive interface" width="400px" />
-</center>
+<p align="center">
+  <img src="./demo.gif" alt="git jump interactive interface" width="600px" />
+</p>
 
 
 ## How To Enable <kbd>Option/Alt</kbd>+<kbd>\<number\></kbd> Shortcut
