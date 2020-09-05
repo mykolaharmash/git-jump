@@ -90,10 +90,6 @@ function helpSubCommand(): void {
   help = help.replace(/\{bold\}(.+)\{\/bold\}/g, (substring, content) => bold(content))
   help = help.replace(/\{dim\}(.+)\{\/dim\}/g, (substring, content) => dim(content))
   help = help.replace(/\{wrap:(\d+)\}(.+)\{\/wrap\}/g, (substring, paddingSize, content) => {
-    // console.log(multilineTextLayout(
-    //   content, 
-    //   process.stdout.columns - parseInt(paddingSize)
-    // ))
     return multilineTextLayout(
       content.trim(), 
       process.stdout.columns - parseInt(paddingSize)
@@ -107,6 +103,10 @@ function helpSubCommand(): void {
   process.stdout.write(help)
 
   process.exit(0)
+}
+
+function renameSubCommand(args) {
+  
 }
 
 
