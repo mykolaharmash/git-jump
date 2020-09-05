@@ -7,6 +7,17 @@ import { parseKeys } from './parseKeys'
 import { fuzzyMatch } from './fuzzy'
 import * as readline from 'readline'
 
+class InputError extends Error {
+  title: string
+
+  constructor(title: string, message: string) {
+    super(message)
+
+    this.title = title
+    this.message = message
+  }
+}
+
 
 // Sub-commands
 
@@ -50,7 +61,7 @@ function executeSubCommand(name: string, args: string[]) {
       break
     }
     case 'rename': {
-      console.log('rename')
+      renameSubCommand(args)
       break
     }
     case 'delete': {
@@ -58,7 +69,7 @@ function executeSubCommand(name: string, args: string[]) {
       break
     }
     default: {
-      throw new Error(`Unknown sub-command ${name}`)
+      throw new InputError(`Unknown command ${bold(`git jump ${name}`)}`, `See ${bold('git jump --help')} for the list of supported commands.`)
     }
   }
 }
@@ -70,7 +81,7 @@ function listSubCommand(): void {
 }
 
 function newSubCommand(args: string[]): void {
-  const { status, message } = gitSwitch(['-c', ...args])
+  const { status, message } = gitCommand('switch', ['-c', ...args])
 
   state.scene = Scene.Message
   state.message = message
@@ -105,8 +116,13 @@ function helpSubCommand(): void {
   process.exit(0)
 }
 
-function renameSubCommand(args) {
-  
+function renameSubCommand(args: string[]): void {
+  if (args.length < 2) {
+    throw new InputError('Wrong Format.', `You should specify both current and new branch name, ${bold('git jump rename <old branch name> <new branch name>')}.`)
+  }
+
+
+
 }
 
 
@@ -632,7 +648,7 @@ function locateGitRepoFolder(folder: string): string {
   }
 
   if (folder === '/') {
-    throw new Error('There is no Git repository in current or any parent folder.')
+    throw new InputError(`You're not in Git repo.`, 'There is no Git repository in current or any parent folder.')
   }
 
   return locateGitRepoFolder(fsPath.resolve(folder, '..'))
@@ -734,10 +750,10 @@ function getBranchNameForLine(line: ListLine): string | null {
   }
 }
 
-function gitSwitch(args: string[]): { status: number, message: string[] } {
-  const commandString = ['git', 'switch', ...args].join(' ')
+function gitCommand(command: string, args: string[]): { status: number, message: string[] } {
+  const commandString = ['git', command, ...args].join(' ')
 
-  const { stdout, stderr, error, status } = spawnSync('git', ['switch', ...args])
+  const { stdout, stderr, error, status } = spawnSync('git', [command, ...args])
 
   if (error) {
     throw new Error(`Could not run ${bold(commandString)}.`)
@@ -756,7 +772,7 @@ function gitSwitch(args: string[]): { status: number, message: string[] } {
 }
 
 function switchBranch(branchName: string, state: State): { status: number, message: string[] } {
-  const switchResult = gitSwitch([branchName])
+  const switchResult = gitCommand('switch', [branchName])
 
   if (switchResult.status === 0) {
     updateBranchLastSwitch(branchName, Date.now(), state)
@@ -895,7 +911,7 @@ function bare() {
 // Jump to a branch
 
 function jumpTo(args: string[]) {
-  const switchResult = gitSwitch(args)
+  const switchResult = gitCommand('switch', args)
 
   if (switchResult.status === 0) {
     state.scene = Scene.Message
@@ -946,18 +962,21 @@ function multilineTextLayout(text: string, columns: number): string[] {
 }
 
 function handleError(error: Error): void {
+  if (error instanceof InputError) {
+    state.message = [`${yellow(error.title)} ${error.message}`]  
+  } else {
+    state.message = [
+      `${red('Error:')} ${error.message}`,
+      '',
+      `${bold('What to do?')}`,
+      'Help improve git-jump, create GitHub issue with this error and steps to reproduce it. Thank you!',
+      '',
+      `GitHub Issues: https://github.com/mykolaharmash/git-jump/issues`
+    ]
+  }
+
   state.scene = Scene.Message
-  state.message = [
-    `${red('Error:')} ${error.message}`,
-    '',
-    `${bold('What to do?')}`,
-    'Help improve git-jump, create GitHub issue with this error and steps to reproduce it. Thank you!',
-    '',
-    `GitHub Issues: https://github.com/mykolaharmash/git-jump/issues`
-  ]
-
   view(state)
-
   process.exit(1)
 }
 
