@@ -16,7 +16,6 @@
   "files": [
     "exec",
     "dist",
-    "img",
     "!dist/*.map",
     "git-jump.1",
     "help.txt"
