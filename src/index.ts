@@ -65,7 +65,7 @@ function executeSubCommand(name: string, args: string[]) {
       break
     }
     case 'delete': {
-      console.log('delete')
+      deleteSubCommand(args)
       break
     }
     default: {
@@ -121,8 +121,35 @@ function renameSubCommand(args: string[]): void {
     throw new InputError('Wrong Format.', `You should specify both current and new branch name, ${bold('git jump rename <old branch name> <new branch name>')}.`)
   }
 
+  const { status, message } = gitCommand('branch', ['--move', args[0], args[1]])
 
+  state.scene = Scene.Message
+  state.message = message
 
+  if (status === 0) {
+    renameJumpDataBranch(args[0], args[1], state)
+
+    state.message.push('Renamed.')
+  }
+
+  view(state)
+
+  process.exit(status)
+}
+
+function deleteSubCommand(args: string[]): void {
+  const { status, message } = gitCommand('branch', ['--delete', args[0]])
+
+  state.scene = Scene.Message
+  state.message = message
+
+  if (status === 0) {
+    deleteJumpDataBranch(args[0], state)
+  }
+
+  view(state)
+
+  process.exit(status)
 }
 
 
@@ -719,6 +746,31 @@ function updateBranchLastSwitch(name: string, lastSwitch: number, state: State):
   saveBranchesJumpData(state.gitRepoFolder, jumpData)
 }
 
+function renameJumpDataBranch(currentName: string, newName: string, state: State): void {
+  const jumpData = readBranchesJumpData(state.gitRepoFolder)
+  const currentJumpData = jumpData[currentName]
+
+  if (currentJumpData === undefined) {
+    return
+  }
+  
+  jumpData[newName] = { ...currentJumpData, name: newName }
+  delete jumpData[currentName]
+
+  saveBranchesJumpData(state.gitRepoFolder, jumpData)
+}
+
+function deleteJumpDataBranch(branchName: string, state: State): void {
+  const jumpData = readBranchesJumpData(state.gitRepoFolder)
+
+  if (jumpData[branchName] === undefined) {
+    return
+  }
+  
+  delete jumpData[branchName]
+
+  saveBranchesJumpData(state.gitRepoFolder, jumpData)
+}
 
 function readCurrentHEAD(gitRepoFolder: string): CurrentHEAD {
   const head = readFileSync(fsPath.join(gitRepoFolder, '.git/HEAD')).toString()
