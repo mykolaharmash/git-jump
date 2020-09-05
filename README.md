@@ -1,4 +1,4 @@
-![git-jump CLI logo](./img/github-banner.png)
+![git-jump CLI logo](./img/readme-banner.png)
 
 # Git Branches Helper
 
@@ -84,13 +84,13 @@ It might be disabled by default in your terminal, here is how to make it work in
 
 In Preferences go to `Profiles`, select your profile and go to `Keys`. At the bottom set `Left Option (⌥) Key` to `Esc+`.
 
-![iTerm 2 app preferences window](./iTerm-Option-key@2x.png)
+![iTerm 2 app preferences window](./img/iTerm-Option-key@2x.png)
 
 ### macOS Terminal
 
 In Preferences go to `Profiles`, select your profile and go to `Keyboard`. Enable `Use Option as Meta key` checkbox.
 
-![macOS Terminal app preferences window](./Terminal-Option-key@2x.png)
+![macOS Terminal app preferences window](./img/Terminal-Option-key@2x.png)
 
 ### Hyper
 
