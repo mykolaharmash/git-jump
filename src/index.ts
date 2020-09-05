@@ -723,9 +723,27 @@ function saveBranchesJumpData(gitRepoFolder: string, jumpData: BranchDataCollect
   }  
 }
 
+/**
+ * Cleans up branches that do not exists in Git already
+ * but still present in jump data.
+ */
+function cleanUpJumpData(gitRepoFolder: string, jumpData: BranchDataCollection, rawGitBranches: string[]): void {
+  const cleanJumpData = Object.keys(jumpData).reduce((cleanData, jumpDataBranchName) => {
+    if (rawGitBranches.includes(jumpDataBranchName)) {
+      cleanData[jumpDataBranchName] = jumpData[jumpDataBranchName]
+    }
+
+    return cleanData
+  }, {} as BranchDataCollection)
+
+  saveBranchesJumpData(gitRepoFolder, cleanJumpData)
+}
+
 function readBranchesData(gitRepoFolder: string): BranchData[] {
   const rawGitBranches = readRawGitBranches(gitRepoFolder)
   const branchesJumpData = readBranchesJumpData(gitRepoFolder)
+
+  cleanUpJumpData(gitRepoFolder, branchesJumpData, rawGitBranches)
 
   return rawGitBranches
     .map(branch => {
