@@ -11,6 +11,10 @@ See [how it looks](#How-It-Looks-In-Action).
 
 ## Install
 
+```shell
+npm i -g git-jump
+```
+
 ## Usage
 
 ```shell
