@@ -922,19 +922,20 @@ function jumpTo(args: string[]) {
 }
 
 function multilineTextLayout(text: string, columns: number): string[] {
-  const sanitizedText = text.replace(/\x1b.+?m/gi, '')
-
-  if (sanitizedText.length === 0) {
+  if (text.length === 0) {
     return []
   }
 
   const words = text.split(' ')  
+  const escapeCodePattern = /\x1b.+?m/gi
 
   return words.slice(1).reduce((lines, word) => {
     const currentLine = lines[lines.length - 1]
+    const sanitizedCurrentLine = currentLine.replace(escapeCodePattern, '')
+    const sanitizedWord = word.replace(escapeCodePattern, '')
 
-    // + 1 at the end is wor space in front of the word
-    if (currentLine.length + word.length + 1 <= columns) {
+    // +1 at the end is wor space in front of the word
+    if (sanitizedCurrentLine.length + sanitizedWord.length + 1 <= columns) {
       lines[lines.length - 1] = currentLine + ' ' + word
     } else {
       lines.push(word)
