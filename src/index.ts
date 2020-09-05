@@ -25,7 +25,6 @@ function isSubCommand(args: string[]): boolean {
   const isDashDashSubCommand = [
     '--list', 
     '--version', 
-    '--help',
     '-l',
     '-v',
     '-h'
@@ -51,7 +50,8 @@ function executeSubCommand(name: string, args: string[]) {
       console.log('version')
       break
     }
-    case '--help':
+    // --help is handled by git natively, it open man page
+    // using ./git-jump.1
     case '-h': {
       helpSubCommand()
       break
@@ -96,7 +96,7 @@ function newSubCommand(args: string[]): void {
 }
 
 function helpSubCommand(): void {
-  let help = readFileSync(fsPath.join(__dirname, '../src/help.txt')).toString()
+  let help = readFileSync(fsPath.join(__dirname, '../help.txt')).toString()
 
   help = help.replace(/\{bold\}(.+)\{\/bold\}/g, (substring, content) => bold(content))
   help = help.replace(/\{dim\}(.+)\{\/dim\}/g, (substring, content) => dim(content))

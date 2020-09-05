@@ -1,0 +1,86 @@
+.TH "git-jump" "1" " "git-jump" ""
+
+Git Branches Helper
+
+.RE
+
+.RS 2
+
+.B Usage:
+
+.RS 2
+.TP 2
+\fB$\fR git jump <fuzzy branch name>
+Switches to the best matching branch.
+.LP
+.RE
+
+.RS 2
+.TP 2
+\fB$\fR git jump
+Starts interactive interface.
+.LP
+.RE
+
+.B Interactive Interface:
+
+.RS 2
+- Up/Down arrows to navigate the list
+.RE
+.RS 2
+- Enter to switch into a branch
+.RE
+.RS 2
+- Type to search
+.RE
+.RS 2
+- Option+0..9 to quickly jump to a brunch from the list 
+.RE
+.RS 4
+Alt+0..9 on Window and Linux
+.RE
+
+.B Sub-Commands:
+
+.RS 2
+.TP 2
+\fB$\fR git jump --list
+Shows a plain list of branches without interactive interface. Use it to pipe the list of branches to other tools like "grep".
+Shortcut: -l
+.LP
+.RE
+
+.RS 2
+.TP 2
+\fB$\fR git jump new <branch name>
+Creates a new branch and switches into it. 
+A proxy to the native "git switch -c <branch name>", so all the standard options are supported.
+See https://git-scm.com/docs/git-switch for the list of options.
+.LP
+.RE
+
+.RS 2
+.TP 2
+\fB$\fR git jump delete <branch name>
+Deletes a branch. Proxy to the native "git branch --delete <branch name>".
+.LP
+.RE
+
+.RS 2
+.TP 2
+\fB$\fR git jump rename <branch name> <new branch name>
+Renames local branch. Proxy to the native "git branch --move <branch name> <new branch name>".
+.LP
+.RE
+
+.B Support:
+.RS 2
+Most of the support happens through the GitHub repo https://github.com/mykolaharmash/git-jump.
+
+Please create a new issue if you think something is wrong with git-jump or you'd like to see some new feature.
+
+You can also contact me directly at mykola.harmash@gmail.com.
+.RE
+
+
+.RE

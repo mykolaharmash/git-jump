@@ -10,6 +10,7 @@
   "bin": {
     "git-jump": "./exec/git-jump"
   },
+  "man": ["./git-jump.1"],
   "files": [
     "exec",
     "dist",
