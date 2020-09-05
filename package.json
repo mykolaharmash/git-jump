@@ -15,7 +15,9 @@
     "exec",
     "dist",
     "img",
-    "!dist/*.map"
+    "!dist/*.map",
+    "git-jump.1",
+    "help.txt"
   ],
   "author": {
     "name": "Mykola Harmash",
