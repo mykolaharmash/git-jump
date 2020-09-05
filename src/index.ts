@@ -922,7 +922,9 @@ function jumpTo(args: string[]) {
 }
 
 function multilineTextLayout(text: string, columns: number): string[] {
-  if (text.length === 0) {
+  const sanitizedText = text.replace(/\x1b.+?m/gi, '')
+
+  if (sanitizedText.length === 0) {
     return []
   }
 
