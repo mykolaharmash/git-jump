@@ -90,7 +90,7 @@ In Preferences go to `Profiles`, select your profile and go to `Keys`. At the bo
 
 In Preferences go to `Profiles`, select your profile and go to `Keyboard`. Enable `Use Option as Meta key` checkbox.
 
-![macOS Terminal app preferences window](v/img/Terminal-Option-key@2x.png)
+![macOS Terminal app preferences window](https://raw.githubusercontent.com/mykolaharmash/git-jump/main/img/Terminal-Option-key@2x.png)
 
 ### Hyper
 
