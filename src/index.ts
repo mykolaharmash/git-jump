@@ -138,13 +138,13 @@ function renameSubCommand(args: string[]): void {
 }
 
 function deleteSubCommand(args: string[]): void {
-  const { status, message } = gitCommand('branch', ['--delete', args[0]])
+  const { status, message } = gitCommand('branch', ['--delete', ...args])
 
   state.scene = Scene.Message
   state.message = message
 
   if (status === 0) {
-    deleteJumpDataBranch(args[0], state)
+    deleteJumpDataBranch(args, state)
   }
 
   view(state)
@@ -778,14 +778,16 @@ function renameJumpDataBranch(currentName: string, newName: string, state: State
   saveBranchesJumpData(state.gitRepoFolder, jumpData)
 }
 
-function deleteJumpDataBranch(branchName: string, state: State): void {
+function deleteJumpDataBranch(branchNames: string[], state: State): void {
   const jumpData = readBranchesJumpData(state.gitRepoFolder)
 
-  if (jumpData[branchName] === undefined) {
-    return
-  }
-  
-  delete jumpData[branchName]
+  branchNames.forEach((name) => {
+    if (jumpData[name] === undefined) {
+      return
+    }
+    
+    delete jumpData[name]
+  })
 
   saveBranchesJumpData(state.gitRepoFolder, jumpData)
 }

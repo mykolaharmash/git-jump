@@ -26,6 +26,7 @@ Run without arguments to launch [interactive UI](#How-It-Looks-In-Action).
 * Navigate the list with ↓↑ arrows and hit enter ⏎ to switch into selected branch.
 * On the left hand side of the list you'll see a number next to a brunch name. Use <kbd>Option</kbd>+<kbd>\<number\></kbd> for quick switch (<kbd>Alt</kbd>+<kbd>\<number\></kbd> on Windows and Linux).
 * Start typing to filter the list. The search is fuzzy, you don't have to be precise.
+* Ctrl+C to exit.
 
 <br />
 
@@ -68,9 +69,9 @@ Renames a branch.
 <br />
 
 ```shell
-git jump delete <branch name>
+git jump delete <branch name> [<branch name>, ...]
 ```
-Deletes a branch. No fuzzy matching here, of course🙂.
+Deletes one or multiple branches. No fuzzy matching here, of course 🙂.
 
 
 ## How It Looks In Action
