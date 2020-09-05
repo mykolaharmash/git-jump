@@ -1,4 +1,4 @@
-![git-jump CLI logo](./github-banner.png)
+![git-jump CLI logo](./img/github-banner.png)
 
 # Git Branches Helper
 
@@ -72,7 +72,7 @@ Deletes a branch.
 ## How It Looks In Action
 
 <p align="center">
-  <img src="./demo.gif" alt="git jump interactive interface" width="600px" style="border-radius: 5px;" />
+  <img src="./img/demo.gif" alt="git jump interactive interface" width="600px" style="border-radius: 5px;" />
 </p>
 
 

@@ -10,6 +10,12 @@
   "bin": {
     "git-jump": "./exec/git-jump"
   },
+  "files": [
+    "exec",
+    "dist",
+    "img",
+    "!dist/*.map"
+  ],
   "author": {
     "name": "Mykola Harmash",
     "email": "mykola.harmash@gmail.com",
