@@ -80,9 +80,6 @@ function versionSubCommand() {
 }
 
 function listSubCommand(): void {
-  // --list might be used pipe list of branches to some other
-  // tool, so the output should be clean
-  state.showUpdateMessageOnExit = false
   state.isInteractive = false
 
   view(state)
