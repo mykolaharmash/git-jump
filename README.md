@@ -12,7 +12,7 @@ See [how it looks](#How-It-Looks-In-Action).
 ## Install
 
 ```shell
-npm i -g git-jump
+npm install -g git-jump
 ```
 
 ## Usage

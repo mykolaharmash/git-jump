@@ -1,7 +1,7 @@
 import * as os from 'os'
 import {Writable, Stream} from 'stream'
-import { exec, execSync, spawnSync } from 'child_process'
-import {existsSync, readdirSync, fstat, writeFile, readFileSync, appendFileSync, opendirSync, Dirent, writeFileSync, mkdirSync} from 'fs'
+import { exec, execSync, spawnSync, ChildProcess } from 'child_process'
+import {existsSync, readdirSync, fstat, writeFile, readFileSync, appendFileSync, opendirSync, Dirent, writeFileSync, mkdirSync, readFile} from 'fs'
 import * as fsPath from 'path'
 import { parseKeys } from './parseKeys'
 import { fuzzyMatch } from './fuzzy'
@@ -47,7 +47,7 @@ function executeSubCommand(name: string, args: string[]) {
     }
     case '--version':
     case '-v': {
-      console.log('version')
+      versionSubCommand()
       break
     }
     // --help is handled by git natively, it open man page
@@ -74,10 +74,20 @@ function executeSubCommand(name: string, args: string[]) {
   }
 }
 
+function versionSubCommand() {
+  process.stdout.write(`${readVersion()}\n`)
+  process.exit(0)
+}
+
 function listSubCommand(): void {
+  // --list might be used pipe list of branches to some other
+  // tool, so the output should be clean
+  state.showUpdateMessageOnExit = false
   state.isInteractive = false
 
   view(state)
+
+  process.exit(0)
 }
 
 function newSubCommand(args: string[]): void {
@@ -197,6 +207,7 @@ interface State {
   message: string[]
   gitRepoFolder: string | null
   isInteractive: boolean
+  latestPackageVersion: string | null
 }
 
 const state: State = {
@@ -217,7 +228,8 @@ const state: State = {
   scene: Scene.List,
   message: [],
   gitRepoFolder: null,
-  isInteractive: true
+  isInteractive: true,
+  latestPackageVersion: null
 }
 
 function dim(s: string): string {
@@ -681,6 +693,10 @@ function locateGitRepoFolder(folder: string): string {
   return locateGitRepoFolder(fsPath.resolve(folder, '..'))
 }
 
+function readVersion() {  
+  return JSON.parse(readFileSync(fsPath.join(__dirname, '../package.json')).toString()).version
+}
+
 function readRawGitBranches(gitRepoFolder: string): string[] {
   function collectBranchNames(folderPath: string, prefix: string = ''): string[] {
     return readdirSync(folderPath, { withFileTypes: true })
@@ -895,7 +911,6 @@ function handleSpecialKey(key: Buffer) {
 
   if (key.equals(CTRL_C)) {
     clear()
-    process.stdout.write('\n')
     process.exit()
   }
 
@@ -1033,6 +1048,24 @@ function multilineTextLayout(text: string, columns: number): string[] {
   }, [words[0]])
 }
 
+function checkUpdates(): void {
+  const VERSION_PATTERN = /^\d+\.\d+\.\d+$/
+
+  exec('npm info git-jump dist-tags.latest', (error, stdout) => {
+    if (error) {
+      return
+    }
+
+    const output = stdout.trim()
+
+    if (!VERSION_PATTERN.test(output)) {
+      return
+    }
+
+    state.latestPackageVersion = output
+  })
+}
+
 function handleError(error: Error): void {
   if (error instanceof InputError) {
     state.message = [`${yellow(error.title)} ${error.message}`]  
@@ -1050,6 +1083,26 @@ function handleError(error: Error): void {
   state.scene = Scene.Message
   view(state)
   process.exit(1)
+}
+
+function handleExit() {  
+  if (state.latestPackageVersion === null) {
+    return
+  }
+
+  const currentVersion = readVersion()
+
+  if (currentVersion < state.latestPackageVersion) {
+    state.scene = Scene.Message
+    state.message = [
+      `New version of git-jump is available: ${yellow(currentVersion)} → ${green(state.latestPackageVersion)}.`,
+      `See what\'s new: https://github.com/mykolaharmash/git-jump/releases/tag/v${state.latestPackageVersion}`,
+      '',
+      `${bold('npm install -g git-jump')} to update.`
+    ]
+
+    view(state)
+  }
 }
 
 function initialize() {
@@ -1079,16 +1132,16 @@ function initialize() {
 }
 
 function main(args: string[]) {
-
   process.on('uncaughtException', handleError)
-
-  // process.on('exit', (code) => {
-    // If there are updates available, suggest user to update
-  // })
+  process.on('exit', handleExit)
 
   initialize()
 
   if (args.length === 0) {
+    // Checking for updates only when interactive UI is started
+    // as only then there potentially a chance for update
+    // request to finish before git-jump exists 
+    checkUpdates()
     bare()
 
     return
