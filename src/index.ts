@@ -1,11 +1,9 @@
 import * as os from 'os'
-import {Writable, Stream} from 'stream'
-import { exec, execSync, spawnSync, ChildProcess } from 'child_process'
-import {existsSync, readdirSync, fstat, writeFile, readFileSync, appendFileSync, opendirSync, Dirent, writeFileSync, mkdirSync, readFile} from 'fs'
+import { exec, spawnSync } from 'child_process'
+import {existsSync, readdirSync, readFileSync, appendFileSync, opendirSync, Dirent, writeFileSync, mkdirSync} from 'fs'
 import * as fsPath from 'path'
 import { parseKeys } from './parseKeys'
 import { fuzzyMatch } from './fuzzy'
-import * as readline from 'readline'
 
 class InputError extends Error {
   title: string
@@ -457,6 +455,10 @@ function viewSearchLine(state: State): string {
   
   const quickSelectLines = getQuickSelectLines(state.list)
 
+  if (quickSelectLines.length === 0) {
+    return line
+  }
+
   line += viewQuickSelectHint(quickSelectLines.length - 1, hintColumnWidth)
   
   return line
@@ -562,9 +564,11 @@ function cursorTo(x: number, y: number) {
 const CTRL_C = Buffer.from('03', 'hex')
 const UP = Buffer.from('1b5b41', 'hex')
 const DOWN = Buffer.from('1b5b42', 'hex')
+const RIGHT = Buffer.from('1b5b43', 'hex')
+const LEFT = Buffer.from('1b5b44', 'hex')
 const DELETE = Buffer.from('7f', 'hex')
+const BACKSPACE = Buffer.from('08', 'hex')
 const ENTER = Buffer.from('0d', 'hex')
-const SPACE = Buffer.from('20', 'hex')
 
 function log(s: any) {
   appendFileSync('./log', Buffer.from(`${JSON.stringify(s)}\n`))
@@ -898,7 +902,7 @@ function handleSpecialKey(key: Buffer) {
   // 1b66 - Option+right, word jump
   // 1b4f48, 01 - Cmd+left, Control+a, Home
   // 1b4f46, 05 - Cmd+right, Control+e, End
-  // 7f - Delete
+  // 7f, 08 - Delete, 08 on Windows
   // 0d - Enter
   // 1b5b337e - fn+Delete, Forward Delete
   // 1b7f - Option+Delete, delete whole word
@@ -924,6 +928,28 @@ function handleSpecialKey(key: Buffer) {
     return
   }
 
+  if (key.equals(RIGHT)) {
+    if (state.searchStringCursorPosition === state.searchString.length) {
+      return
+    }
+    
+    state.searchStringCursorPosition += 1
+    view(state)
+
+    return
+  }
+
+  if (key.equals(LEFT)) {
+    if (state.searchStringCursorPosition === 0) {
+      return
+    }
+    
+    state.searchStringCursorPosition -= 1
+    view(state)
+
+    return
+  }
+
   if (key.equals(DOWN)) {
     state.highlightedLineIndex = Math.min(state.list.length - 1, state.highlightedLineIndex + 1)
     view(state)
@@ -931,12 +957,12 @@ function handleSpecialKey(key: Buffer) {
     return
   }
 
-  if (key.equals(DELETE)) {
-    if (state.searchString.length === 0) {
+  if (key.equals(DELETE) || key.equals(BACKSPACE)) {
+    if (state.searchStringCursorPosition === 0) {
       return
     }
 
-    state.searchString = state.searchString.slice(0, state.searchString.length - 1)  
+    state.searchString = state.searchString.substring(0, state.searchStringCursorPosition - 1) + state.searchString.substring(state.searchStringCursorPosition, state.searchString.length)
     state.searchStringCursorPosition -= 1
     state.list = generateList(state)
     state.highlightedLineIndex = 0
@@ -960,7 +986,7 @@ function handleSpecialKey(key: Buffer) {
 function handleStringKey(key: Buffer) {
   const inputString = key.toString()
 
-  state.searchString += inputString
+  state.searchString = state.searchString.substring(0, state.searchStringCursorPosition) + inputString + state.searchString.substring(state.searchStringCursorPosition, state.searchString.length)
   state.searchStringCursorPosition += inputString.length
   state.list = generateList(state)
   state.highlightedLineIndex = 0
