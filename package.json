@@ -13,7 +13,7 @@
   "man": [
     "./git-jump.1"
   ],
-  "files": [
+  "files": [  
     "exec",
     "dist",
     "!dist/*.map",

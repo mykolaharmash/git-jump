@@ -1092,6 +1092,10 @@ function checkUpdates(): void {
   })
 }
 
+function compareSemver(a: string, b: string): number {
+  return a.localeCompare(b, undefined, { numeric: true })
+}
+
 function handleError(error: Error): void {
   if (error instanceof InputError) {
     state.message = [`${yellow(error.title)} ${error.message}`]  
@@ -1118,7 +1122,7 @@ function handleExit() {
 
   const currentVersion = readVersion()
 
-  if (currentVersion < state.latestPackageVersion) {
+  if (compareSemver(currentVersion, state.latestPackageVersion) === -1) {
     const sourcePackageManager = existsSync(fsPath.join(__dirname, '../homebrew')) ? 'homebrew' : 'npm'
     const updateCommand = sourcePackageManager === 'npm' ? 'npm install -g git-jump' : 'brew upgrade git-jump'
 
