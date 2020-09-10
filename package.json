@@ -1,6 +1,6 @@
 {
   "name": "git-jump",
-  "version": "0.1.10",
+  "version": "0.1.11",
   "description": "Git Branches Helper",
   "scripts": {
     "build": "tsc",
@@ -13,7 +13,7 @@
   "man": [
     "./git-jump.1"
   ],
-  "files": [  
+  "files": [
     "exec",
     "dist",
     "!dist/*.map",
