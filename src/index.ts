@@ -502,7 +502,6 @@ function view(state: State) {
 
           return lines.concat(multilineTextLayout(line, process.stdout.columns - lineSpacer.length))
         }, []).map(line => lineSpacer + line),
-        '',
         ''
       ]
 
@@ -534,13 +533,15 @@ function clear() {
   process.stdout.write(`\x1b[0J`)
 }
 
-function render(lines: string[]) {  
-  process.stdout.write(lines.join('\n'))
+function render(lines: string[]) {
+  // + '\n' to move cursor to the next line 
+  // after the list line was rendered
+  process.stdout.write(lines.join('\n') + '\n')
 
   // Keep track of the cursor's vertical position
   // in order to know how many lines to move up 
   // to clean the screen later
-  renderState.cursorY = lines.length
+  renderState.cursorY = lines.length + 1
 }
 
 function cursorTo(x: number, y: number) {
@@ -857,6 +858,8 @@ function gitCommand(command: string, args: string[]): { status: number, message:
     ...cleanLines(stderr)
   ]
 
+  log(message)
+
   return { status, message }
 }
 
@@ -1116,13 +1119,17 @@ function handleExit() {
   const currentVersion = readVersion()
 
   if (currentVersion < state.latestPackageVersion) {
+    const sourcePackageManager = existsSync(fsPath.join(__dirname, '../homebrew')) ? 'homebrew' : 'npm'
+    const updateCommand = sourcePackageManager === 'npm' ? 'npm install -g git-jump' : 'brew upgrade git-jump'
+
     state.scene = Scene.Message
-    state.message = [
-      `New version of git-jump is available: ${yellow(currentVersion)} → ${green(state.latestPackageVersion)}.`,
-      `See what\'s new: https://github.com/mykolaharmash/git-jump/releases/tag/v${state.latestPackageVersion}`,
+    state.message = state.message.concat([
       '',
-      `${bold('npm install -g git-jump')} to update.`
-    ]
+      `New version of git-jump is available: ${yellow(currentVersion)} → ${green(state.latestPackageVersion)}.`,
+      `Changelog: https://github.com/mykolaharmash/git-jump/releases/tag/v${state.latestPackageVersion}`,
+      '',
+      `${bold(updateCommand)} to update.`
+    ])
 
     view(state)
   }
