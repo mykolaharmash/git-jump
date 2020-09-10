@@ -858,8 +858,6 @@ function gitCommand(command: string, args: string[]): { status: number, message:
     ...cleanLines(stderr)
   ]
 
-  log(message)
-
   return { status, message }
 }
 
