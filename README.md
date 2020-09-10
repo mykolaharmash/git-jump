@@ -14,6 +14,11 @@ See [how it looks](#How-It-Looks-In-Action).
 ```shell
 npm install -g git-jump
 ```
+or using Homebrew
+```shell
+brew tap mykolaharmash/git-jump
+brew install git-jump
+```
 
 ## Usage
 
