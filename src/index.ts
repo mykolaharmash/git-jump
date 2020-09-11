@@ -182,6 +182,13 @@ interface ListLine {
   searchMatchScore: number
 }
 
+interface PackageInfo {
+  version: string
+  engines: {
+    node: string
+  }
+}
+
 enum Scene {
   List,
   Message
@@ -202,7 +209,8 @@ interface State {
   message: string[]
   gitRepoFolder: string | null
   isInteractive: boolean
-  latestPackageVersion: string | null
+  latestPackageVersion: string | null,
+  packageInfo: PackageInfo | null
 }
 
 const state: State = {
@@ -224,7 +232,8 @@ const state: State = {
   message: [],
   gitRepoFolder: null,
   isInteractive: true,
-  latestPackageVersion: null
+  latestPackageVersion: null,
+  packageInfo: null
 }
 
 function dim(s: string): string {
@@ -695,8 +704,25 @@ function locateGitRepoFolder(folder: string): string {
   return locateGitRepoFolder(fsPath.resolve(folder, '..'))
 }
 
+function readPackageInfo() {
+  if (state.packageInfo !== null) {
+    return state.packageInfo
+  }
+
+  state.packageInfo = JSON.parse(readFileSync(fsPath.join(__dirname, '../package.json')).toString())
+
+  return state.packageInfo
+}
+
 function readVersion() {  
-  return JSON.parse(readFileSync(fsPath.join(__dirname, '../package.json')).toString()).version
+  return readPackageInfo().version
+}
+
+function readRequiredNodeVersion() {
+  const semverString = readPackageInfo().engines.node
+  const match = semverString.match(/\d+\.\d+\.\d+/)
+
+  return match === null ? null : match[0]
 }
 
 function readRawGitBranches(gitRepoFolder: string): string[] {
@@ -1163,10 +1189,24 @@ function initialize() {
   state.highlightedLineIndex = 0
 }
 
+function ensureNodeVersion() {
+  const currentVersion = process.versions.node
+  const requiredVersion = readRequiredNodeVersion()
+
+  if (requiredVersion === null) {
+    return
+  }
+
+  if (compareSemver(currentVersion, requiredVersion) === -1) {
+    throw new InputError('Unsupported Node.js version.', `git-jump requires Node.js version >=${requiredVersion}, you're using ${currentVersion}.`)
+  }
+}
+
 function main(args: string[]) {
   process.on('uncaughtException', handleError)
   process.on('exit', handleExit)
 
+  ensureNodeVersion()
   initialize()
 
   if (args.length === 0) {
