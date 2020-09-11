@@ -20,6 +20,8 @@ brew tap mykolaharmash/git-jump
 brew install git-jump
 ```
 
+(!) Make sure to use at least nodejs v12.12.0 to avoid issues.
+
 ## Usage
 
 ```shell
