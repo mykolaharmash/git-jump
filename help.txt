@@ -27,8 +27,8 @@
       {wrap:6}A proxy to the native "git switch -c <branch name>", so all the standard options are supported.{/wrap}
       {wrap:6}See https://git-scm.com/docs/git-switch for the list of options.{/wrap}
 
-    {dim}${/dim} git jump delete <branch name>
-      {wrap:6}Deletes a branch. Proxy to the native "git branch --delete <branch name>".{/wrap}
+    {dim}${/dim} git jump delete <branch name> [<branch name>, ...]
+      {wrap:6}Deletes one or multiple branches. Proxy to the native "git branch --delete <branch name>".{/wrap}
 
     {dim}${/dim} git jump rename <branch name> <new branch name>
       {wrap:6}Renames local branch. Proxy to the native "git branch --move <branch name> <new branch name>".{/wrap}
