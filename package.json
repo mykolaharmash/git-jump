@@ -5,7 +5,8 @@
   "scripts": {
     "build": "tsc",
     "build:watch": "tsc --watch",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "release": "cat ./how-to-release.md"
   },
   "bin": {
     "git-jump": "./exec/git-jump"
