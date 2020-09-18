@@ -511,6 +511,7 @@ function view(state: State) {
 
           return lines.concat(multilineTextLayout(line, process.stdout.columns - lineSpacer.length))
         }, []).map(line => lineSpacer + line),
+        '',
         ''
       ]
 
@@ -543,14 +544,12 @@ function clear() {
 }
 
 function render(lines: string[]) {
-  // + '\n' to move cursor to the next line 
-  // after the list line was rendered
-  process.stdout.write(lines.join('\n') + '\n')
+  process.stdout.write(lines.join('\n'))
 
   // Keep track of the cursor's vertical position
   // in order to know how many lines to move up 
   // to clean the screen later
-  renderState.cursorY = lines.length + 1
+  renderState.cursorY = lines.length
 }
 
 function cursorTo(x: number, y: number) {
@@ -1031,8 +1030,6 @@ function bare() {
   process.stdin.setRawMode(true)
 
   process.stdin.on('data', (data: Buffer) => {
-    // log(data.toString('hex'))
-
     parseKeys(data).forEach((key: Buffer) => {
       if (isSpecialKey(key)) {
         handleSpecialKey(key)
@@ -1064,7 +1061,7 @@ function jumpTo(args: string[]) {
 
   if (state.list.length === 0) {
     state.scene = Scene.Message
-    state.message = [`${bold(yellow(state.searchString))} does not mach any branch`]
+    state.message = [`${bold(yellow(state.searchString))} does not match any branch`]
 
     view(state)
 
@@ -1087,7 +1084,7 @@ function multilineTextLayout(text: string, columns: number): string[] {
     const sanitizedCurrentLine = currentLine.replace(escapeCodePattern, '')
     const sanitizedWord = word.replace(escapeCodePattern, '')
 
-    // +1 at the end is wor space in front of the word
+    // +1 at the end is for the space in front of the word
     if (sanitizedCurrentLine.length + sanitizedWord.length + 1 <= columns) {
       lines[lines.length - 1] = currentLine + ' ' + word
     } else {
