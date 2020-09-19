@@ -54,7 +54,7 @@ Shortcut: -l
 .TP 2
 \fB$\fR git jump new <branch name>
 Creates a new branch and switches into it. 
-A proxy to the native "git switch -c <branch name>", so all the standard options are supported.
+A proxy to the native "git switch --create", so all the standard options are supported.
 See https://git-scm.com/docs/git-switch for the list of options.
 .LP
 .RE
@@ -62,14 +62,14 @@ See https://git-scm.com/docs/git-switch for the list of options.
 .RS 2
 .TP 2
 \fB$\fR git jump delete <branch name> [<branch name>, ...]
-Deletes one or multiple branches. Proxy to the native "git branch --delete <branch name>".
+Deletes one or multiple branches. Proxy to the native "git branch --delete".
 .LP
 .RE
 
 .RS 2
 .TP 2
 \fB$\fR git jump rename <branch name> <new branch name>
-Renames local branch. Proxy to the native "git branch --move <branch name> <new branch name>".
+Renames local branch. Proxy to the native "git branch --move".
 .LP
 .RE
 

@@ -86,7 +86,7 @@ function listSubCommand(): void {
 }
 
 function newSubCommand(args: string[]): void {
-  const { status, message } = gitCommand('switch', ['-c', ...args])
+  const { status, message } = gitSwitch(['--create', ...args])
 
   state.scene = Scene.Message
   state.message = message
@@ -171,13 +171,13 @@ interface CurrentHEAD {
   branchName: string | null
 }
 
-enum ListLineType {
+enum ListItemType {
   Head,
   Branch
 }
 
-interface ListLine {
-  type: ListLineType,
+interface ListItem {
+  type: ListItemType,
   content: CurrentHEAD | BranchData,
   searchMatchScore: number
 }
@@ -203,7 +203,7 @@ interface State {
   searchString: string
   searchStringCursorPosition: number
   currentHEAD: CurrentHEAD
-  list: ListLine[]
+  list: ListItem[]
   lineSelected: boolean
   scene: Scene
   message: string[]
@@ -337,9 +337,9 @@ function truncate(s: string, maxWidth: number): string {
   return truncated
 }
 
-function getQuickSelectLines(list: ListLine[]): ListLine[] {
-  return list.filter((line: ListLine) => {
-    return line.type !== ListLineType.Head
+function getQuickSelectLines(list: ListItem[]): ListItem[] {
+  return list.filter((line: ListItem) => {
+    return line.type !== ListItemType.Head
   }).slice(0, 10)
 }
 
@@ -386,13 +386,13 @@ function viewBranch(
 function viewListLines(state: State, layout: LayoutColumn[]): string[] {
   let quickSelectIndex = -1
 
-  return state.list.map((line: ListLine) => {
+  return state.list.map((line: ListItem) => {
     switch (line.type) {
-      case ListLineType.Head: {
+      case ListItemType.Head: {
         return viewCurrentHEAD(line.content as CurrentHEAD, layout)
       }
 
-      case ListLineType.Branch: {
+      case ListItemType.Branch: {
         quickSelectIndex++
 
         return viewBranch(
@@ -629,10 +629,10 @@ enum ListSortCriterion {
   SearchMatchScore
 }
 
-function sortedListLines(list: ListLine[], criterion: ListSortCriterion): ListLine[] {
+function sortedListLines(list: ListItem[], criterion: ListSortCriterion): ListItem[] {
   if (criterion === ListSortCriterion.LastSwitch) {
-    return list.slice().sort((a: ListLine, b: ListLine) => {
-      if (b.type === ListLineType.Head) {
+    return list.slice().sort((a: ListItem, b: ListItem) => {
+      if (b.type === ListItemType.Head) {
         return 1
       }
 
@@ -640,21 +640,21 @@ function sortedListLines(list: ListLine[], criterion: ListSortCriterion): ListLi
     })
   }
 
-  return list.slice().sort((a: ListLine, b: ListLine) => {
+  return list.slice().sort((a: ListItem, b: ListItem) => {
     return b.searchMatchScore - a.searchMatchScore
   })
 }
 
 function generateList(state: State) {
-  let list: ListLine[] = []
+  let list: ListItem[] = []
 
   list.push({ 
-    type: ListLineType.Head, 
+    type: ListItemType.Head, 
     content: state.currentHEAD, 
     searchMatchScore: state.searchString === '' ? 1 : fuzzyMatch(state.searchString, state.currentHEAD.detached ? state.currentHEAD.sha : state.currentHEAD.branchName)
   })
 
-  const branchLines: ListLine[] = state.branches
+  const branchLines: ListItem[] = state.branches
     // Filter out current branch if HEAD is not detached,
     // because current branch will be displayed as the first list
     .filter(branch => {
@@ -665,14 +665,14 @@ function generateList(state: State) {
     })
     .map((branch: BranchData) => {
       return { 
-        type: ListLineType.Branch, 
+        type: ListItemType.Branch, 
         content: branch,
         searchMatchScore: state.searchString === '' ? 1 : fuzzyMatch(state.searchString, branch.name)
       }
     })
 
   list = list.concat(branchLines)
-    .filter((line: ListLine) => line.searchMatchScore > 0)
+    .filter((line: ListItem) => line.searchMatchScore > 0)
 
   const sortCriterion = state.searchString === '' ? ListSortCriterion.LastSwitch : ListSortCriterion.SearchMatchScore
 
@@ -851,30 +851,37 @@ function readCurrentHEAD(gitRepoFolder: string): CurrentHEAD {
  * Returns null in case current HEAD was selected
  * and it's detached.
  */
-function getBranchNameForLine(line: ListLine): string | null {
+function getBranchNameForLine(line: ListItem): string | null {
   switch (line.type) {
-    case ListLineType.Head: {
+    case ListItemType.Head: {
       const content = line.content as CurrentHEAD
 
       return content.detached ? content.sha : content.branchName
     }
 
-    case ListLineType.Branch: {
+    case ListItemType.Branch: {
       return (line.content as BranchData).name
     }
   }
 }
 
-function gitCommand(command: string, args: string[]): { status: number, message: string[] } {
+interface GitCommandResult {
+  status: number 
+  message: string[]
+  stdout: string
+  stderr: string  
+}
+
+function gitCommand(command: string, args: string[]): GitCommandResult {
   const commandString = ['git', command, ...args].join(' ')
 
-  const { stdout, stderr, error, status } = spawnSync('git', [command, ...args])
+  const { stdout, stderr, error, status } = spawnSync('git', [command, ...args], { encoding: 'utf-8' })
 
   if (error) {
     throw new Error(`Could not run ${bold(commandString)}.`)
   }
 
-  const cleanLines = (stream: string | Buffer) => stream.toString().trim().split('\n').filter(line => line !== '')
+  const cleanLines = (text: string) => text.trim().split('\n').filter(line => line !== '')
 
   const statusIndicatorColor = status > 0 ? red : green
   const message = [
@@ -883,23 +890,75 @@ function gitCommand(command: string, args: string[]): { status: number, message:
     ...cleanLines(stderr)
   ]
 
-  return { status, message }
+  return { status, message, stdout, stderr }
 }
 
-function switchBranch(branchName: string, state: State): { status: number, message: string[] } {
-  const switchResult = gitCommand('switch', [branchName])
+function chainGitCommands(...commands: { (): GitCommandResult }[]): GitCommandResult[] {
+  return commands.reduce((results: GitCommandResult[], command) => {
+    const result = command()
 
-  if (switchResult.status === 0) {
+    results.push(result)
+
+    return results
+  }, [])
+}
+
+function compoundGitCommandsResult(results: GitCommandResult[]): GitCommandResult {
+  return results.reduce((compoundResult: GitCommandResult, result, i) => {
+    compoundResult.status = result.status
+    compoundResult.message = compoundResult.message.concat(result.message)
+
+    // Add bland line between messages from different commands
+    if (i !== results.length - 1) {
+      compoundResult.message.push('')
+    }
+
+    compoundResult.stderr += result.stderr
+    compoundResult.stdout += result.stdout
+
+    return compoundResult
+  }, { status: 0, message: [], stderr: '', stdout: '' })
+}
+
+function gitSwitch(args: string[]): GitCommandResult {
+  const isParameter = (argument: string) => argument.startsWith('-') || argument.startsWith('--')
+  const switchResult = gitCommand('switch', args)  
+  const branchName = args.length === 1 && !isParameter(args[0]) ? args[0] : null
+    
+  if (switchResult.status === 0 && branchName !== null) {
     updateBranchLastSwitch(branchName, Date.now(), state)
   }
-
+  
   return switchResult
 }
 
-function selectListLine(line: ListLine): void {
-  const branchName = getBranchNameForLine(line)      
+function switchBranch(branchName: string, state: State): { status: number, message: string[] } {
+  const statusResult = gitCommand('status', ['--porcelain'])
+  const statusDirty = statusResult.stdout.length > 0
+  
+  if (!statusDirty) {
+    return gitSwitch([branchName])
+  }
 
-  if (line.type === ListLineType.Head) {
+  const results = chainGitCommands(
+    () => gitCommand('stash', ['--include-untracked']),
+    () => gitSwitch([branchName]),
+    () => gitCommand('stash', ['apply'])
+  )
+
+  const compoundResult = compoundGitCommandsResult(results)
+  compoundResult.message = [
+    `There are uncommitted changes. Will stash them and apply to ${bold(branchName)} after switch.`,
+    ''
+  ].concat(compoundResult.message)
+
+  return compoundResult
+}
+
+function switchToListItem(item: ListItem): void {
+  const branchName = getBranchNameForLine(item)      
+
+  if (item.type === ListItemType.Head) {
     state.scene = Scene.Message  
     state.message = [`Staying on ${bold(branchName)}`]
     view(state)
@@ -942,7 +1001,7 @@ function handleSpecialKey(key: Buffer) {
   }
 
   if (key.equals(ENTER)) {
-    selectListLine(state.list[state.highlightedLineIndex])
+    switchToListItem(state.list[state.highlightedLineIndex])
 
     return
   }
@@ -1002,7 +1061,7 @@ function handleSpecialKey(key: Buffer) {
     const quickSelectLines = getQuickSelectLines(state.list)
 
     if (quickSelectIndex < quickSelectLines.length) {
-      selectListLine(quickSelectLines[quickSelectIndex])
+      switchToListItem(quickSelectLines[quickSelectIndex])
     }
 
     return
@@ -1045,7 +1104,7 @@ function bare() {
 // Jump to a branch
 
 function jumpTo(args: string[]) {
-  const switchResult = gitCommand('switch', args)
+  const switchResult = gitSwitch(args)
 
   if (switchResult.status === 0) {
     state.scene = Scene.Message
@@ -1056,6 +1115,7 @@ function jumpTo(args: string[]) {
     process.exit(0)
   }
 
+  // Generate filtered and sorted list of branches
   state.searchString = args[0]
   state.list = generateList(state)
 
@@ -1068,7 +1128,7 @@ function jumpTo(args: string[]) {
     process.exit(1)
   }
 
-  selectListLine(state.list[0])
+  switchToListItem(state.list[0])
 }
 
 function multilineTextLayout(text: string, columns: number): string[] {

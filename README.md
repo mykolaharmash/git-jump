@@ -55,14 +55,14 @@ git jump <any native switch arguments>
 
 You can use `git jump` as a drop-in replacement for [native `git switch`](https://git-scm.com/docs/git-switch). `git jump` will proxy all the argument to the native command, so you don't have to think to use one or the other.
 
-For example `git jump my-branch --track origin/main --quiet` works just fine.
+For example `git jump my-branch --discard-changes` works just fine.
 
 <br />
 
 ```shell
 git jump new <branch name>
 ```
-Creates a new branch and switches into it.
+Creates a new branch and switches into it. Supports all native parameters of `git switch`, for example `git jump new <branch name> --track origin/main`.
 
 <br />
 
