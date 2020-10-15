@@ -932,29 +932,6 @@ function gitSwitch(args: string[]): GitCommandResult {
   return switchResult
 }
 
-function switchBranch(branchName: string, state: State): { status: number, message: string[] } {
-  const statusResult = gitCommand('status', ['--porcelain'])
-  const statusDirty = statusResult.stdout.length > 0
-  
-  if (!statusDirty) {
-    return gitSwitch([branchName])
-  }
-
-  const results = chainGitCommands(
-    () => gitCommand('stash', ['--include-untracked']),
-    () => gitSwitch([branchName]),
-    () => gitCommand('stash', ['apply'])
-  )
-
-  const compoundResult = compoundGitCommandsResult(results)
-  compoundResult.message = [
-    `There are uncommitted changes. Will stash them and apply to ${bold(branchName)} after switch.`,
-    ''
-  ].concat(compoundResult.message)
-
-  return compoundResult
-}
-
 function switchToListItem(item: ListItem): void {
   const branchName = getBranchNameForLine(item)      
 
@@ -966,7 +943,7 @@ function switchToListItem(item: ListItem): void {
     process.exit(0)
   }
 
-  const { status, message } = switchBranch(branchName, state)
+  const { status, message } = gitSwitch([branchName])
 
   state.scene = Scene.Message
   state.message = message
