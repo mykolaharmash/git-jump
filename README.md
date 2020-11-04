@@ -2,10 +2,11 @@
 
 # Git Branches Helper
 
-All native `git switch ⋯` features, plus:
 * Interactive UI to view and switch branches
-* Branches are sorted by usage recency
+* Sorting by recently used
 * Fuzzy search
+* Fuzzy switch: `git jump hlw` → `git switch hello-world`
+* Uses native `git switch` under the hood, supports all its parameters
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/mykolaharmash/git-jump/main/img/demo.gif" alt="git jump interactive interface" width="600px" style="border-radius: 5px;" />
