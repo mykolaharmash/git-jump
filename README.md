@@ -7,7 +7,9 @@ All native `git switch ⋯` features, plus:
 * Branches are sorted by usage recency
 * Fuzzy search
 
-See [how it looks](#How-It-Looks-In-Action).
+<p align="center">
+  <img src="https://raw.githubusercontent.com/mykolaharmash/git-jump/main/img/demo.gif" alt="git jump interactive interface" width="600px" style="border-radius: 5px;" />
+</p>
 
 ## Install
 
@@ -77,13 +79,6 @@ Renames a branch.
 git jump delete <branch name> [<branch name>, ...]
 ```
 Deletes one or multiple branches. No fuzzy matching here, of course 🙂.
-
-
-## How It Looks In Action
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/mykolaharmash/git-jump/main/img/demo.gif" alt="git jump interactive interface" width="600px" style="border-radius: 5px;" />
-</p>
 
 
 ## How To Enable <kbd>Option/Alt</kbd>+<kbd>\<number\></kbd> Shortcut
