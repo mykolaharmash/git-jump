@@ -105,7 +105,3 @@ Open `.hyper.js` and add next line to the `config` section:
 ```js
 modifierKeys: { altIsMeta: true }
 ```
-
-
-
-
