@@ -724,25 +724,18 @@ function readRequiredNodeVersion() {
   return match === null ? null : match[0]
 }
 
-function readRawGitBranches(gitRepoFolder: string): string[] {
-  function collectBranchNames(folderPath: string, prefix: string = ''): string[] {
-    return readdirSync(folderPath, { withFileTypes: true })
-      .reduce((branches: string[], item: Dirent) => {
-        if (item.isFile()) {
-          branches.push(prefix + item.name)
-        }    
+function readRawGitBranches(): string[] {
+  const { stdout, stderr, error } = spawnSync('git', ['branch', `--format=%(refname:short)`], { encoding: 'utf-8' })
 
-        if (item.isDirectory()) {
-          branches = branches.concat(
-            collectBranchNames(fsPath.join(folderPath, item.name), `${prefix}${item.name}/`)
-          )
-        }
-
-        return branches
-      }, [])
+  if (error) {
+    throw new Error(`Could not get the list of Git branches. Cause: ${error.message}. Stacktrace: ${error.stack}.`)
   }
 
-  return collectBranchNames(fsPath.join(gitRepoFolder, '.git/refs/heads'))
+  if (stderr !== '') {
+    throw new Error(`Could not get the list of Git branches. Cause: ${stderr}.`)
+  }
+
+  return stdout.split('\n').filter(branchName => branchName !== '')
 }
 
 type BranchDataCollection =  {[key: string]: BranchData}
@@ -783,7 +776,7 @@ function cleanUpJumpData(gitRepoFolder: string, jumpData: BranchDataCollection, 
 }
 
 function readBranchesData(gitRepoFolder: string): BranchData[] {
-  const rawGitBranches = readRawGitBranches(gitRepoFolder)
+  const rawGitBranches = readRawGitBranches()
   const branchesJumpData = readBranchesJumpData(gitRepoFolder)
 
   cleanUpJumpData(gitRepoFolder, branchesJumpData, rawGitBranches)
@@ -891,33 +884,6 @@ function gitCommand(command: string, args: string[]): GitCommandResult {
   ]
 
   return { status, message, stdout, stderr }
-}
-
-function chainGitCommands(...commands: { (): GitCommandResult }[]): GitCommandResult[] {
-  return commands.reduce((results: GitCommandResult[], command) => {
-    const result = command()
-
-    results.push(result)
-
-    return results
-  }, [])
-}
-
-function compoundGitCommandsResult(results: GitCommandResult[]): GitCommandResult {
-  return results.reduce((compoundResult: GitCommandResult, result, i) => {
-    compoundResult.status = result.status
-    compoundResult.message = compoundResult.message.concat(result.message)
-
-    // Add bland line between messages from different commands
-    if (i !== results.length - 1) {
-      compoundResult.message.push('')
-    }
-
-    compoundResult.stderr += result.stderr
-    compoundResult.stdout += result.stdout
-
-    return compoundResult
-  }, { status: 0, message: [], stderr: '', stdout: '' })
 }
 
 function gitSwitch(args: string[]): GitCommandResult {
