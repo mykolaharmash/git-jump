@@ -8,6 +8,8 @@
 * Fuzzy switch: `git jump hlw` → `git switch hello-world`
 * Uses native `git switch` under the hood, supports all its parameters
 
+Give it a ⭐️ if you like it. This really helps.
+
 <p align="center">
   <img src="https://raw.githubusercontent.com/mykolaharmash/git-jump/main/img/demo.gif" alt="git jump interactive interface" width="600px" style="border-radius: 5px;" />
 </p>
