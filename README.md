@@ -30,7 +30,7 @@ brew install git-jump
 ```shell
 git jump
 ```
-Run without arguments to launch [interactive UI](#How-It-Looks-In-Action).
+Run without arguments to launch the interactive UI.
 
 * At first, branches are not sorted. Once you start switching around, `git jump` will track the history and sort the list, so that the most recently used branches are at the top and can be accessed faster.
 * Navigate the list with ↓↑ arrows and hit enter ⏎ to switch into selected branch.
